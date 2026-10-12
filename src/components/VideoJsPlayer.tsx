@@ -92,8 +92,16 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
   const [bufferedEnd, setBufferedEnd] = useState<number>(0);
-  const [volume, setVolume] = useState<number>(1);
+  const [volume, setVolume] = useState<number>(0.7); // 默认音量 70%
   const [isMuted, setIsMuted] = useState<boolean>(false);
+  // 音量增强 ×2: video.js 音量上限是 1, 增强靠音频图里的 GainNode 实现
+  const [volumeBoost, setVolumeBoost] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('fastmusic_boost') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isDraggingProgress, setIsDraggingProgress] = useState<boolean>(false);
@@ -180,6 +188,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
   // 均衡izer Web Audio 节点（由 player 拥有整个 audio graph）
   const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
+  const boostGainRef = useRef<GainNode | null>(null);
   const eqInputRef = useRef<GainNode | null>(null);
   const eqOutputRef = useRef<GainNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -213,6 +222,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     });
 
     playerRef.current = player;
+    // 默认音量 70%
+    player.volume(0.7);
 
     player.on('play', () => {
       setIsPlaying(true);
@@ -374,11 +385,14 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       const input = audioCtx.createGain();
       const filters = EQ_BAND_FREQS.map(() => audioCtx.createBiquadFilter());
       const output = audioCtx.createGain();
+      // 音量增强 ×2 的增益节点 (video.js 音量上限 1, 只能靠 GainNode 翻倍)
+      const boostGain = audioCtx.createGain();
+      boostGain.gain.value = volumeBoost ? 2 : 1;
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256; // 128 frequency bins
       analyser.smoothingTimeConstant = 0.82;
 
-      // 串联：source -> input -> filter[0] -> ... -> filter[9] -> output -> analyser -> destination
+      // 串联：source -> input -> filter[0] -> ... -> filter[9] -> output -> boostGain -> analyser -> destination
       source.disconnect();
       source.connect(input);
       input.connect(filters[0]);
@@ -386,7 +400,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         filters[i].connect(filters[i + 1]);
       }
       filters[filters.length - 1].connect(output);
-      output.connect(analyser);
+      output.connect(boostGain);
+      boostGain.connect(analyser);
       analyser.connect(audioCtx.destination);
 
       filters.forEach((f, i) => {
@@ -398,8 +413,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       eqFiltersRef.current = filters;
       eqInputRef.current = input;
       eqOutputRef.current = output;
+      boostGainRef.current = boostGain;
       analyserRef.current = analyser;
       win._fastMusicAnalyser = analyser;
+      (win as unknown as { _fastMusicBoostGain?: GainNode })._fastMusicBoostGain = boostGain;
 
       applyEqCurve();
 
@@ -580,6 +597,20 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     const player = playerRef.current;
     if (!player) return;
     player.muted(!isMuted);
+  };
+
+  // 音量增强 ×2: 切换音频图里的 boostGain 增益 (状态持久化到 localStorage)
+  const toggleVolumeBoost = () => {
+    const next = !volumeBoost;
+    setVolumeBoost(next);
+    try {
+      localStorage.setItem('fastmusic_boost', next ? '1' : '0');
+    } catch {
+      // ignore
+    }
+    if (boostGainRef.current) {
+      boostGainRef.current.gain.value = next ? 2 : 1;
+    }
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1070,8 +1101,24 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
                 className="w-16 sm:w-20 h-1 accent-rose-500 bg-neutral-800 rounded-lg cursor-pointer"
-                title={`音量: ${Math.round(volume * 100)}%`}
+                title={`音量: ${Math.round(volume * 100)}%${volumeBoost ? ' ×2 增强' : ''}`}
               />
+
+              {/* 音量增强 ×2 开关 */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleVolumeBoost();
+                }}
+                title={volumeBoost ? '音量增强 ×2 (已开启, 点击关闭)' : '音量增强 ×2 (音乐增强)'}
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  volumeBoost
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : 'text-neutral-400 hover:text-white hover:bg-neutral-800/60'
+                }`}
+              >
+                ×2
+              </button>
             </div>
 
             {/* Favorite button */}

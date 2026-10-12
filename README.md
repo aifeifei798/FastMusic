@@ -18,7 +18,8 @@
   - 视频已是 **H.264** → 纯 remux 到 MP4(`-c copy`,秒级,几乎零 CPU);
   - 视频为 **AV1/HEVC** 等 → 转码为 VP9 WebM(一次性,缓存 sidecar `*.mkv.webm`);
   - 缓存命中后走普通 206 Range 流,支持平滑 seek。
-- **音频播放**: 视频.js 音频图 `source → 10 段 BiquadFilter EQ → analyser → destination`;条形 / 光晕环 / 对称 EQ 三种频谱可视化;EQ 状态持久化到 localStorage。
+- **音频播放**: 视频.js 音频图 `source → 10 段 BiquadFilter EQ → boostGain → analyser → destination`;条形 / 光晕环 / 对称 EQ 三种频谱可视化;EQ 状态持久化到 localStorage。
+- **音量增强 ×2**: 默认音量 70%,音量滑块旁有 ×2 增强开关(靠音频图里的 GainNode 实现,状态持久化到 localStorage `fastmusic_boost`)。
 - **控制栏自动隐藏**: 播放中 3.5 秒无鼠标操作自动隐藏,鼠标进入播放区重新显示,离开立即隐藏(音频与视频统一)。
 
 ## 🚀 快速开始
