@@ -2,6 +2,8 @@
 
 [中文](README.md) · **English**
 
+Current version **v0.1.0** · full history in [CHANGELOG.md](CHANGELOG.md)
+
 ![FastMusic](docs/logo.png)
 
 A local music / MTV streaming player. **React SPA + Express media backend**: it scans your local music directories, streams files over HTTP Range requests, and ships a real-time spectrum visualizer plus a 10-band equalizer.

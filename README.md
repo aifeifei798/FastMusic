@@ -2,6 +2,8 @@
 
 **中文** · [English](README.en.md)
 
+当前版本 **v0.1.0** · 变更历史见 [CHANGELOG.md](CHANGELOG.md)
+
 ![FastMusic](docs/logo.png)
 
 本地音乐 / MTV 流媒体播放器。**React SPA + Express 媒体后端**,扫描本地音乐目录,通过 HTTP Range 流式播放,自带实时频谱可视化与 10 段均衡器。
