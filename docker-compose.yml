@@ -1,0 +1,39 @@
+# FastMusic — Docker Compose 部署
+#
+# 用法:
+#   1) 把音乐 / MTV 目录挂载进容器(下面的 /media/... 是容器内路径, 可改成任意路径)
+#   2) docker compose up -d
+#   3) 打开 http://localhost:3000, 在「系统配置」里扫描
+#
+# 注意: .mkv 的 sidecar(foo.mkv.webm / foo.mkv.mp4) 写在源文件旁边, 所以媒体目录必须可写。
+services:
+  fastmusic:
+    # 用 GitHub Container Registry 上的预构建镜像; 也可以删掉 image 行用本地 build
+    image: ghcr.io/aifeifei798/fastmusic:latest
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+      # 索引 / 封面缓存 / 歌词缓存 持久化位置(挂载卷)
+      DATA_DIR: /data
+      # 扫描目录(容器内路径), 逗号或分号分隔; 之后也可以在「系统配置」UI 里增删
+      MEDIA_DIRS: /media/music,/media/mtv
+      SCAN_CONCURRENCY: "8"
+      TRANCODE_CONCURRENCY: "3"
+      PRETRANCODE_MKV: "1"
+      COVER_PREFETCH_CONCURRENCY: "8"
+      COVER_PREFETCH_DELAY_MS: "80"
+      LYRIC_PREFETCH_CONCURRENCY: "3"
+      LYRIC_PREFETCH_DELAY_MS: "200"
+    volumes:
+      # 媒体目录: 改成你本机真实路径(必须可写, .mkv sidecar 写在这里)
+      - ./media/music:/media/music
+      - ./media/mtv:/media/mtv
+      # 索引 + 封面 + 歌词缓存, 容器重启不丢
+      - fastmusic_data:/data
+    restart: unless-stopped
+
+volumes:
+  fastmusic_data:

@@ -2,6 +2,12 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 风格，版本号遵循语义化版本。
 
+## Unreleased
+
+### Added
+- **Docker 部署**: `Dockerfile`（Node 22 + `ffmpeg` + `fd-find`，生产模式 serve `dist/`）、`docker-compose.yml`（媒体目录挂载 + `fastmusic_data` 持久卷）、GitHub Actions `.github/workflows/docker.yml` 自动构建并推送到 GHCR（`ghcr.io/aifeifei798/fastmusic:latest`）。
+- `DATA_DIR` 环境变量：索引 / 封面缓存 / 歌词缓存的写入位置（默认与 `server.ts` 同目录），容器里设为 `/data` 并挂载卷。
+
 ## v0.1.0 — 2026-10-12
 
 首个公开版本。

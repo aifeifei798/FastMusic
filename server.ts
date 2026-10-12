@@ -48,8 +48,13 @@ export interface ServerMediaItem {
 // In-Memory Database Map: key is media_id
 const MEDIA_DB = new Map<string, ServerMediaItem>();
 
+// 持久化数据目录：索引 fastmusic_db.json + 封面缓存 covers/ + 歌词缓存 lyrics/。
+// 默认与 server.ts 同目录；Docker 里设 DATA_DIR=/data 并挂载卷，缓存就不写进镜像层。
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : __dirname;
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
 // 持久本地数据库：扫描一次写到磁盘，重启 不再 清空；增量去重 skip 已入库未变更文件
-const DB_FILE = path.join(__dirname, 'fastmusic_db.json');
+const DB_FILE = path.join(DATA_DIR, 'fastmusic_db.json');
 
 // 本地媒体流服务端。核心难点：本机 Chrome 跳过 NVIDIA 的 VA-API 硬解设备，
 // MP4/H.264 走的正是这条被跳过的解码路径 → 黑屏有声。
@@ -1404,8 +1409,8 @@ interface LyricResult {
 
 // 缓存结构：内存里只存"查过 / 没查过"的元信息（几十字节一条），完整 LRC 文本写到
 // lyrics/<hash>.json。这样"缓存全部歌词"跑完 3 万+ 条也只占几 MB 内存，而不是几百 MB。
-const LYRIC_DIR = path.join(__dirname, 'lyrics');
-const LYRIC_DB_FILE = path.join(__dirname, 'fastmusic_lyrics.json');
+const LYRIC_DIR = path.join(DATA_DIR, 'lyrics');
+const LYRIC_DB_FILE = path.join(DATA_DIR, 'fastmusic_lyrics.json');
 
 interface LyricEntry {
   found: boolean;
@@ -1749,8 +1754,8 @@ app.post('/api/lyrics/prefetch', async (req: Request, res: Response) => {
 // 图片字节缓存到 covers/<id>.<ext>，索引持久化到 fastmusic_covers.json。
 // "查过但没有封面" 也记录（coverMisses），避免每次切歌都重新联网。
 // ============================================================
-const COVER_DIR = path.join(__dirname, 'covers');
-const COVER_INDEX_FILE = path.join(__dirname, 'fastmusic_covers.json');
+const COVER_DIR = path.join(DATA_DIR, 'covers');
+const COVER_INDEX_FILE = path.join(DATA_DIR, 'fastmusic_covers.json');
 const COVER_MAX_BYTES = 3 * 1024 * 1024;
 const COVER_PREFETCH_MAX = 200;
 const COVER_PREFETCH_CONCURRENCY = 8;

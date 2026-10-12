@@ -10,6 +10,8 @@ A local music / MTV streaming player. **React SPA + Express media backend**: it 
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/release/aifeifei798/FastMusic.svg)](https://github.com/aifeifei798/FastMusic/releases)
+[![Docker image](https://img.shields.io/badge/image-ghcr.io%2Ffastmusic-2496ED)](https://github.com/aifeifei798/fastmusic/pkgs/container/fastmusic)
+[![Docker build](https://github.com/aifeifei798/FastMusic/actions/workflows/docker.yml/badge.svg)](https://github.com/aifeifei798/FastMusic/actions/workflows/docker.yml)
 
 ![FastMusic playing a 4K MTV — 久しぶりのリップグロス ⧸ AKB48 60th Single](docs/mtv-preview.png)
 
@@ -63,11 +65,43 @@ Other commands:
 ./server.sh stop | restart | status | logs | install
 ```
 
+## 🐳 Docker / Compose deployment
+
+Prebuilt images live on GitHub Container Registry: **`ghcr.io/aifeifei798/fastmusic:latest`** (rebuilt on every push to `main`; later `vX.Y.Z` tags produce matching image tags). The image ships Node 22 + `ffmpeg` + `fd-find` and runs with `NODE_ENV=production`, serving the prebuilt `dist/`.
+
+```bash
+git clone https://github.com/aifeifei798/FastMusic.git
+cd FastMusic
+mkdir -p media/music media/mtv     # or point at your own music directories
+docker compose up -d               # builds locally on first run; drop `build: .` to use the prebuilt image
+docker compose logs -f             # scan / transcode logs
+```
+
+Open `http://localhost:3000` → **System config** → scan.
+
+**Mounting notes**
+
+- **Media directories must be writable**: the `.mkv` sidecars (`foo.mkv.webm` / `foo.mkv.mp4`) are written next to the source file, so `:ro` will break playback of `.mkv`.
+- **Index and caches are persisted**: `fastmusic_db.json`, `covers/`, `lyrics/`, `fastmusic_covers.json` and `fastmusic_lyrics.json` are written under `DATA_DIR` (`/data` in the container) and kept in the named volume `fastmusic_data`, so restarting the container keeps the library.
+- To mount real host directories, replace `./media/music` with an absolute path such as `/home/you/Music` and set `MEDIA_DIRS` to the corresponding **in-container** path.
+- Without compose:
+
+```bash
+docker run -d --name fastmusic -p 3000:3000 \
+  -v /home/you/Music:/media/music \
+  -v fastmusic_data:/data \
+  -e MEDIA_DIRS=/media/music \
+  ghcr.io/aifeifei798/fastmusic:latest
+```
+
+The image is built automatically by GitHub Actions (`.github/workflows/docker.yml`): pushes to `main` produce `:latest`, `vX.Y.Z` tags produce `:vX.Y.Z`, and both are pushed to GHCR.
+
 ## ⚙️ Configuration
 
 | Environment variable | Default | Description |
 |---|---|---|
 | `PORT` | `3000` | Server port |
+| `DATA_DIR` | next to `server.ts` | Where the index and caches are stored (`fastmusic_db.json` / `covers/` / `lyrics/` / `fastmusic_covers.json` / `fastmusic_lyrics.json`). In Docker it defaults to `/data`, so a mounted volume keeps them across restarts |
 | `MEDIA_DIRS` | empty | Pre-seeded scan directories, comma or semicolon separated, e.g. `MEDIA_DIRS="/music,/mtv"`; you can also add them in the System config UI or via `POST /api/directories` (persisted in `fastmusic_db.json`) |
 | `PRETRANCODE_MKV` | on | Set to `0` to disable the background pre-transcode queue for `.mkv` files at startup (on-demand transcoding still works) |
 | `SCAN_CONCURRENCY` | `8` | Number of parallel metadata-parsing workers (music-metadata is the bottleneck; 8 workers ≈ 5× faster) |
@@ -85,6 +119,8 @@ Scan directories and the whole-library cache jobs are configured in System confi
 ```
 server.ts              # single entrypoint: API + streaming + transcode engine
 server.sh              # deployment script (start/stop/restart/status/logs)
+Dockerfile             # production image (Node 22 + ffmpeg + fd-find, serves dist/)
+docker-compose.yml     # compose deployment (media mounts + DATA_DIR volume)
 src/
   main.tsx / App.tsx   # SPA entry, central UI and playback/library state
   components/

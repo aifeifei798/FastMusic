@@ -1,0 +1,23 @@
+# 镜像里不需要这些: 依赖与构建产物在镜像内重新生成, 缓存/日志/媒体属于用户数据
+node_modules/
+dist/
+covers/
+lyrics/
+mtv_cache/
+fastmusic_db.json
+fastmusic_covers.json
+fastmusic_lyrics.json
+server.log
+.server.pid
+*.bak*
+*.tmp
+.env
+.env.local
+.git/
+docs/
+README.md
+README.en.md
+CHANGELOG.md
+AGENTS.md
+docker-compose.yml
+.github/

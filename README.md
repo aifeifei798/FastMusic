@@ -10,6 +10,8 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/release/aifeifei798/FastMusic.svg)](https://github.com/aifeifei798/FastMusic/releases)
+[![Docker image](https://img.shields.io/badge/image-ghcr.io%2Ffastmusic-2496ED)](https://github.com/aifeifei798/fastmusic/pkgs/container/fastmusic)
+[![Docker build](https://github.com/aifeifei798/FastMusic/actions/workflows/docker.yml/badge.svg)](https://github.com/aifeifei798/FastMusic/actions/workflows/docker.yml)
 
 ![FastMusic 正在播放 4K MTV — 久しぶりのリップグロス ⧸ AKB48 60th Single](docs/mtv-preview.png)
 
@@ -63,11 +65,43 @@
 ./server.sh stop | restart | status | logs | install
 ```
 
+## 🐳 Docker / Compose 部署
+
+预构建镜像在 GitHub Container Registry: **`ghcr.io/aifeifei798/fastmusic:latest`**(每次 push 到 `main` 自动重建;之后的 `vX.Y.Z` tag 也会产出同名镜像 tag)。镜像内含 Node 22 + `ffmpeg` + `fd-find`, 以 `NODE_ENV=production` 运行(直接 serve 构建好的 `dist/`)。
+
+```bash
+git clone https://github.com/aifeifei798/FastMusic.git
+cd FastMusic
+mkdir -p media/music media/mtv     # 或改成你自己的音乐目录
+docker compose up -d               # 首次会本地 build; 有预构建镜像时可删掉 compose 里的 build: .
+docker compose logs -f             # 扫描 / 转码日志
+```
+
+打开 `http://localhost:3000` → 「系统配置」 → 扫描。
+
+**挂载要点**
+
+- **媒体目录必须可写**: `.mkv` 的 sidecar(`foo.mkv.webm` / `foo.mkv.mp4`) 写在源文件旁边, 所以不能加 `:ro`。
+- **索引与缓存持久化**: `fastmusic_db.json`、`covers/`、`lyrics/`、`fastmusic_covers.json`、`fastmusic_lyrics.json` 都写到 `DATA_DIR`(容器内默认 `/data`), 由 named volume `fastmusic_data` 保存, 容器重启不丢。
+- 想挂载宿主机真实目录: 把 compose 里的 `./media/music` 换成 `/home/you/Music` 之类的绝对路径, 同时把 `MEDIA_DIRS` 改成对应的**容器内**路径。
+- 不用 compose 也可以:
+
+```bash
+docker run -d --name fastmusic -p 3000:3000 \
+  -v /home/you/Music:/media/music \
+  -v fastmusic_data:/data \
+  -e MEDIA_DIRS=/media/music \
+  ghcr.io/aifeifei798/fastmusic:latest
+```
+
+镜像由 GitHub Actions(`.github/workflows/docker.yml`) 自动构建: push 到 `main` 产出 `:latest`, 打 `vX.Y.Z` tag 产出 `:vX.Y.Z`, 推到 GHCR。
+
 ## ⚙️ 配置
 
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
 | `PORT` | `3000` | 服务端口 |
+| `DATA_DIR` | 与 `server.ts` 同目录 | 索引与缓存的持久化位置(`fastmusic_db.json` / `covers/` / `lyrics/` / `fastmusic_covers.json` / `fastmusic_lyrics.json`)。Docker 里默认 `/data`, 挂载卷即可 |
 | `MEDIA_DIRS` | 空 | 预置扫描目录,逗号或分号分隔,例如 `MEDIA_DIRS="/music,/mtv"`;也可在「服务器配置」UI 或 `POST /api/directories` 添加(配置持久化到 `fastmusic_db.json`) |
 | `PRETRANCODE_MKV` | 开启 | 设为 `0` 时禁用启动后的 mkv 后台预转码队列(按需转码仍生效) |
 | `SCAN_CONCURRENCY` | `8` | 扫描时并行解析文件 worker 数(music-metadata 是瓶颈,8 并发 ≈ 5x 加速) |
@@ -85,6 +119,8 @@
 ```
 server.ts              # 单入口: API + 流式服务 + 转码引擎
 server.sh              # 部署脚本 (start/stop/restart/status/logs)
+Dockerfile             # 生产镜像 (Node 22 + ffmpeg + fd-find, serve dist/)
+docker-compose.yml     # Compose 部署 (媒体挂载 + DATA_DIR 卷)
 src/
   main.tsx / App.tsx   # SPA 入口, 中央 UI 与播放/库状态
   components/
@@ -96,6 +132,7 @@ src/
   services/api.ts      # 客户端 API 单例
   utils/ui.ts          # 共享 Tailwind 类常量(滚动条样式)
   utils/theme.ts       # canvas / 占位渐变的主题配色 (VISUALIZER_PALETTE, coverGradient)
+  utils/i18n.ts        # 中文 → 英文 UI 文案字典 + t() 助手
   index.css            # Tailwind 入口 + 语义主题令牌(深色默认, [data-theme=light] 覆盖)
   types/media.ts       # 共享类型, 与 server 响应形状一致
 ```

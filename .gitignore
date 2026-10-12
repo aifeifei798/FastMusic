@@ -19,3 +19,7 @@ mtv_cache/
 # 环境变量
 .env
 .env.local
+
+# Docker 部署时本地挂载的媒体 / 数据目录
+media/
+data/
