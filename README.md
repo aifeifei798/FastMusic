@@ -13,6 +13,7 @@
                         │
                         ├─ 增量扫描 + 持久化索引 (fastmusic_db.json)
                         ├─ .mkv → MP4 remux / VP9 转码 sidecar
+                        ├─ 封面三级兜底 + 磁盘缓存 (covers/)
                         └─ /api/stream/:id (HTTP 206 Range 流式)
 ```
 
@@ -24,7 +25,8 @@
   - 视频已是 **H.264** → 纯 remux 到 MP4(`-c copy`,秒级,几乎零 CPU);
   - 视频为 **AV1/HEVC** 等 → 转码为 VP9 WebM(一次性,缓存 sidecar `*.mkv.webm`);
   - 缓存命中后走普通 206 Range 流,支持平滑 seek。
-- **音频播放**: 视频.js 音频图 `source → 10 段 BiquadFilter EQ → boostGain → analyser → destination`;条形 / 光晕环 / 对称 EQ 三种频谱可视化;EQ 状态持久化到 localStorage。
+- **专辑封面**: 三级兜底自动获取封面 — ① 文件内嵌封面(ID3 APIC / Vorbis Picture,零网络) ② iTunes Search API(`artworkUrl100` → 600×600) ③ 网易云搜索 + 专辑详情(`?param=500y500` 让 CDN 裁尺寸)。候选按标题/歌手/专辑/时长打分选最佳,结果缓存到 `covers/<id>.<ext>` + 索引 `fastmusic_covers.json`(均已 gitignore)。播放区中间列是**旋转唱片**(黑胶纹路 + 中心封面,播放时 14s 一圈),列表行与歌手/专辑卡片也显示封面;工具栏「预取封面」按钮批量解析当前列表(并发 8,最多 200 条)。
+- **音频播放**: 视频.js 音频图 `source → 10 段 BiquadFilter EQ → boostGain → analyser → destination`;条形 / 波形 / 光晕环 / 对称频谱 / **无** 五种视觉模式;EQ 状态持久化到 localStorage。
 - **音量增强 ×2**: 默认音量 70%,音量滑块旁有 ×2 增强开关(靠音频图里的 GainNode 实现,状态持久化到 localStorage `fastmusic_boost`)。
 - **控制栏自动隐藏**: 播放中 3.5 秒无鼠标操作自动隐藏,鼠标进入播放区重新显示,离开立即隐藏(音频与视频统一)。
 - **歌词**: 网易云歌词竖列(当前行居中高亮,上下行淡出),控制栏 Captions 按钮或 `L` 切换,"Aa" 面板可调字号与(视频时)歌词列宽。
@@ -95,6 +97,8 @@ src/
 | `GET /api/transcode/summary` | 全库 `.mkv` 换容器进度汇总:`{total_mkv, ready, running, queued, pending, error}` |
 | `GET /api/transcode/status?ids=a,b,c` | 批量只读状态(列表每 10s 轮询,不触发转码) |
 | `GET /api/lyrics` | 网易云歌词代理:`?title=&artist=&duration=`(自动搜索匹配)或 `?id=<网易云歌曲ID>`;返回 `{found, lyric, tlyric, romalrc}` |
+| `GET /api/cover/:id` | 封面图片字节(内嵌 → iTunes → 网易云三级兜底,磁盘缓存);`?local=1` 只读内嵌不联网;响应带 `X-Cover-Source` 与 `Cache-Control: max-age=31536000` |
+| `POST /api/cover/prefetch` | `{ids:[...]}` 批量解析(并发 8,最多 200 条),返回 `{requested, resolved, cached, covers:{id:url\|null}}` |
 
 ## 📝 已知事项
 
@@ -102,6 +106,7 @@ src/
 - `.webm` 既是音频容器也是视频容器:服务端按实际解码结果分类,客户端用 `videoWidth > 0` 判断画面 vs 频谱。
 - 首次全量扫描较慢(music-metadata 逐文件解析);后续增量扫描很快。
 - 歌词来自网易云明文接口(`music.163.com/api/song/lyric`),服务端代理 + 缓存(`fastmusic_lyrics.json`,已 gitignore);本地曲库标题/歌手若与网易云不一致,可能匹配到翻唱版本或无歌词。
+- 封面来自 iTunes / 网易云公开接口(网易云对部分主流歌手已下架,找不到时显示渐变唱片占位);图片缓存 `covers/` 与索引 `fastmusic_covers.json` 均已 gitignore。
 - 无测试套件;`npm run lint` 即 `tsc --noEmit`。
 - 服务端缓存 `/api/tracks` 的排序结果与 `.mkv` sidecar 状态,扫描/增删条目后自动失效;曲库索引仍是单个 JSON 文件(34k 条目约 13 MB,加载 ~100 ms),无需外部数据库。
 

@@ -209,6 +209,15 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   const [transcodeTick, setTranscodeTick] = useState<number>(0);
   const needsTranscode = !!currentTrack && currentTrack.ext === '.mkv';
 
+  // 封面：/api/cover/:id 服务端三级兜底（本地内嵌 → iTunes → 网易云），字节缓存到 covers/。
+  // 请求本身触发解析，加载成功才显示图片，否则保留渐变占位（黑胶底图）。
+  const [coverLoaded, setCoverLoaded] = useState<boolean>(false);
+  const coverUrl = currentTrack ? mediaApi.getFullUrl(`/api/cover/${currentTrack.id}`) : '';
+
+  useEffect(() => {
+    setCoverLoaded(false);
+  }, [currentTrack?.id]);
+
   useEffect(() => {
     if (!needsTranscode || !currentTrack) { setTranscode(null); return; }
     let cancelled = false;
@@ -1169,10 +1178,6 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           <div className="absolute inset-0 z-10 w-full h-full">
             <AudioVisualizer
               isPlaying={isPlaying}
-              coverUrl={currentTrack.cover_url}
-              title={currentTrack.title}
-              artist={currentTrack.artist}
-              album={currentTrack.album}
               mediaElement={videoRef.current}
               visualizerMode={visualizerMode}
             />
@@ -1222,11 +1227,45 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             </div>
           )}
 
-          {/* 中间列: 唱片留空区，两侧 hairline 让三列结构更清晰 */}
+          {/* 中间列: 唱片 — 外圈黑胶纹路 + 中心封面（服务端三级兜底: 本地内嵌 → iTunes → 网易云）。
+              频谱选"无"时 AudioVisualizer 不挂载, 唱片仍然在这里转。
+              两侧 hairline 让三列结构更清晰 */}
           {!isVideo && (
-            <div className="self-center relative h-[62%]">
+            <div className="self-center relative h-[62%] flex items-center justify-center">
               <span className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neutral-700/45 to-transparent" />
               <span className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neutral-700/45 to-transparent" />
+              <div
+                className={`relative h-[min(100%,220px)] aspect-square rounded-full bg-neutral-950 border-4 border-neutral-800/90 shadow-2xl flex items-center justify-center p-3 ${
+                  isPlaying ? 'animate-[spin_14s_linear_infinite] shadow-rose-950/50' : ''
+                }`}
+              >
+                {/* Vinyl grooves */}
+                <div className="w-full h-full rounded-full border border-neutral-800 flex items-center justify-center p-3.5">
+                  <div className="w-full h-full rounded-full border border-neutral-800/60 flex items-center justify-center p-4">
+                    {/* Center album artwork */}
+                    <div className="relative w-[66%] h-[66%] rounded-full overflow-hidden shadow-inner border-2 border-neutral-700 bg-neutral-900 flex items-center justify-center">
+                      {/* 没有封面时的渐变占位（与列表行的 coverGradient 风格一致） */}
+                      <div className="absolute inset-0 bg-gradient-to-tr from-rose-950 via-neutral-900 to-neutral-950 flex items-center justify-center text-rose-400 font-bold text-xl">
+                        🎵
+                      </div>
+                      {coverUrl && (
+                        <img
+                          src={coverUrl}
+                          alt={currentTrack.title}
+                          referrerPolicy="no-referrer"
+                          className={`relative w-full h-full object-cover transition-opacity duration-500 ${
+                            coverLoaded ? 'opacity-100' : 'opacity-0'
+                          }`}
+                          onLoad={() => setCoverLoaded(true)}
+                          onError={() => setCoverLoaded(false)}
+                        />
+                      )}
+                      {/* Spindle center hole */}
+                      <div className="absolute w-4 h-4 rounded-full bg-neutral-950 border-2 border-neutral-700" />
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

@@ -265,7 +265,10 @@ function decorateItem(item: ServerMediaItem): ServerMediaItem {
   // null = 还没查过（用户没播放过这首歌），'no' = 查过但网易云没有歌词。
   const cached = lyricCache.get(lyricCacheKey(item.title, item.artist));
   const lyric: 'yes' | 'no' | null = cached ? (cached.found ? 'yes' : 'no') : null;
-  return { ...item, ...(info ? { transcode: info } : {}), lyric };
+  // cover_url 只在封面已经解析/缓存时给出（列表不会因此触发网络请求），
+  // 播放器则直接请求 /api/cover/:id，由服务端三级兜底解析。
+  const cover_url = coverIndex.has(item.id) ? `/api/cover/${item.id}` : item.cover_url;
+  return { ...item, ...(info ? { transcode: info } : {}), cover_url, lyric };
 }
 
 // Chrome 的 libwebm demuxer 能解 AV1/VP9（实测本机 headless+真实 Chrome 都出画面，
@@ -1036,7 +1039,7 @@ app.post('/api/scan', async (req: Request, res: Response) => {
 
 // 2. 获取所有歌手 / UP主
 app.get('/api/artists', (_req: Request, res: Response) => {
-  const artistsMap = new Map<string, { albums: Set<string>; tracks: number; cover_url?: string }>();
+  const artistsMap = new Map<string, { albums: Set<string>; tracks: number; coverId?: string }>();
 
   for (const item of MEDIA_DB.values()) {
     if (!artistsMap.has(item.artist)) {
@@ -1045,15 +1048,15 @@ app.get('/api/artists', (_req: Request, res: Response) => {
     const info = artistsMap.get(item.artist)!;
     info.albums.add(item.album);
     info.tracks += 1;
-    // 头像取该歌手第一个带封面曲目的 cover_url（聚合时顺手记录，避免 O(N^2) 二次查找）
-    if (!info.cover_url && item.cover_url) info.cover_url = item.cover_url;
+    // 头像取该歌手第一个"封面已缓存"的曲目（只读缓存，不触发网络解析）
+    if (!info.coverId && coverIndex.has(item.id)) info.coverId = item.id;
   }
 
   const result = Array.from(artistsMap.entries()).map(([artist_name, data]) => ({
     artist_name,
     album_count: data.albums.size,
     track_count: data.tracks,
-    avatar_url: data.cover_url
+    avatar_url: data.coverId ? `/api/cover/${data.coverId}` : undefined
   }));
 
   res.json(result);
@@ -1062,7 +1065,7 @@ app.get('/api/artists', (_req: Request, res: Response) => {
 // 3. 获取专辑列表
 app.get('/api/albums', (req: Request, res: Response) => {
   const artistFilter = req.query.artist as string | undefined;
-  const albumsMap = new Map<string, { artist_name: string; album_name: string; track_count: number; cover_url?: string }>();
+  const albumsMap = new Map<string, { artist_name: string; album_name: string; track_count: number; coverId?: string }>();
 
   for (const item of MEDIA_DB.values()) {
     if (artistFilter && item.artist !== artistFilter) continue;
@@ -1072,13 +1075,22 @@ app.get('/api/albums', (req: Request, res: Response) => {
         artist_name: item.artist,
         album_name: item.album,
         track_count: 0,
-        cover_url: item.cover_url
+        coverId: coverIndex.has(item.id) ? item.id : undefined,
       });
     }
-    albumsMap.get(key)!.track_count += 1;
+    const info = albumsMap.get(key)!;
+    info.track_count += 1;
+    if (!info.coverId && coverIndex.has(item.id)) info.coverId = item.id;
   }
 
-  res.json(Array.from(albumsMap.values()));
+  res.json(
+    Array.from(albumsMap.values()).map((d) => ({
+      artist_name: d.artist_name,
+      album_name: d.album_name,
+      track_count: d.track_count,
+      cover_url: d.coverId ? `/api/cover/${d.coverId}` : undefined
+    }))
+  );
 });
 
 // 4. 查询媒体曲目 (支持模糊搜索、类型过滤与 limit / offset 分页)
@@ -1547,6 +1559,447 @@ app.get('/api/lyrics', async (req: Request, res: Response) => {
   }
 });
 
+// ============================================================
+// 9. 封面引擎：三级兜底
+//   1) 本地内嵌封面（ID3 APIC / Vorbis Picture）→ 零网络、毫秒级
+//   2) iTunes Search API（免 key、免注册、全球曲库；artworkUrl100 → 600x600bb）
+//   3) 网易云搜索 API（与歌词同源；picUrl?param=500y500 让 CDN 裁尺寸省带宽）
+// 图片字节缓存到 covers/<id>.<ext>，索引持久化到 fastmusic_covers.json。
+// "查过但没有封面" 也记录（coverMisses），避免每次切歌都重新联网。
+// ============================================================
+const COVER_DIR = path.join(__dirname, 'covers');
+const COVER_INDEX_FILE = path.join(__dirname, 'fastmusic_covers.json');
+const COVER_MAX_BYTES = 3 * 1024 * 1024;
+const COVER_PREFETCH_MAX = 200;
+const COVER_PREFETCH_CONCURRENCY = 8;
+
+interface CoverEntry {
+  source: 'local' | 'itunes' | 'netease';
+  ext: string;        // '.jpg' | '.png' | '.webp'
+  url?: string;       // 远端原始 URL（调试用）
+  matched?: string;   // 匹配到的远端曲目
+  fetched_at: number;
+}
+
+const coverIndex = new Map<string, CoverEntry>();
+const coverMisses = new Set<string>();
+const coverInFlight = new Map<string, Promise<CoverEntry | null>>();
+
+function coverFile(id: string, ext: string): string {
+  return path.join(COVER_DIR, `${id}${ext}`);
+}
+
+function imageMime(ext: string): string {
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
+function loadCoverIndex(): void {
+  try {
+    if (!fs.existsSync(COVER_INDEX_FILE)) return;
+    const raw = JSON.parse(fs.readFileSync(COVER_INDEX_FILE, 'utf8'));
+    // 新格式 { covers: {...}, misses: [...] }；旧格式（纯对象）也兼容
+    const covers: Record<string, CoverEntry> = raw && raw.covers ? raw.covers : raw;
+    for (const [id, v] of Object.entries(covers || {})) {
+      // 缓存文件被手动删掉时丢弃条目，下次重新解析
+      if (v && v.ext && fs.existsSync(coverFile(id, v.ext))) coverIndex.set(id, v);
+    }
+    if (Array.isArray(raw?.misses)) for (const id of raw.misses) coverMisses.add(String(id));
+    console.log(`[Cover] 已加载封面缓存 ${coverIndex.size} 条（无封面 ${coverMisses.size} 条）`);
+  } catch (e) {
+    console.warn('[Cover] 封面索引读取失败', (e as Error).message);
+  }
+}
+
+// 原子写（tmp + rename），失败只告警不影响播放。
+// 索引可能有几万条，所以写盘是防抖的：最多每 5 秒一次。
+let coverSaveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleCoverSave(): void {
+  if (coverSaveTimer) return;
+  coverSaveTimer = setTimeout(() => {
+    coverSaveTimer = null;
+    saveCoverIndex();
+  }, 5000);
+}
+
+function saveCoverIndex(): void {
+  try {
+    const entries: Record<string, CoverEntry> = {};
+    for (const [k, v] of coverIndex) entries[k] = v;
+    const payload = { covers: entries, misses: Array.from(coverMisses) };
+    const tmp = `${COVER_INDEX_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(payload));
+    fs.renameSync(tmp, COVER_INDEX_FILE);
+  } catch (e) {
+    console.warn('[Cover] 封面索引写入失败', (e as Error).message);
+  }
+}
+
+async function fetchImageBuffer(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs = 10000
+): Promise<{ data: Buffer; ext: string } | null> {
+  try {
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) return null;
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (!ct.startsWith('image/')) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 200 || buf.length > COVER_MAX_BYTES) return null;
+    const ext = ct.includes('png') ? '.png' : ct.includes('webp') ? '.webp' : '.jpg';
+    return { data: buf, ext };
+  } catch {
+    return null;
+  }
+}
+
+// 1) 本地内嵌封面：扫描时用 skipCovers: true 跳过，这里按需二次解析
+async function extractEmbeddedCover(item: ServerMediaItem): Promise<{ data: Buffer; ext: string } | null> {
+  if (!item.abs_path) return null;
+  try {
+    const meta = await parseFile(item.abs_path, { duration: false, skipCovers: false });
+    const pic = meta.common.picture?.[0];
+    if (!pic || !pic.data || pic.data.length === 0) return null;
+    const fmt = (pic.format || 'image/jpeg').toLowerCase();
+    const ext = fmt.includes('png') ? '.png' : fmt.includes('webp') ? '.webp' : '.jpg';
+    return { data: Buffer.from(pic.data), ext };
+  } catch {
+    return null;
+  }
+}
+
+interface CoverCandidate {
+  source: 'itunes' | 'netease';
+  url: string;
+  matched: string;
+  score: number;
+}
+
+// 歌手字段常见噪声：YouTube 官方频道 / Topic / Vevo 后缀，去掉后再比较，
+// 否则 "乃木坂46 OFFICIAL YouTube CHANNEL" 与 "乃木坂46" 会被判成不符。
+function artistTokens(s: string): string[] {
+  return (s || '')
+    .toLowerCase()
+    .replace(/(official|youtube|channel|topic|vevo)/g, ' ')
+    .split(/[^a-z0-9\u4e00-\u9fff\u3040-\u30ff]+/)
+    .filter((t) => t.length >= 2);
+}
+
+// 翻唱/歌ってみた 这类二次创作，封面不是原曲的封面，扣分
+const COVER_MARKER_RE = /翻唱|歌みた|カバー|cover/i;
+
+// 打分：标题精确 100 / 包含 60（否则淘汰）；歌手一致 +40、部分匹配 +25、不符 -40
+// （翻唱/DJ 版很常见，歌手不符要重扣）；专辑一致 +15；网易云时长接近 +20/+10
+function scoreCoverMatch(
+  qTitle: string,
+  qArtist: string,
+  qAlbum: string,
+  cTitle: string,
+  cArtist: string,
+  cAlbum: string,
+  candDurationMs?: number,
+  localDuration?: number
+): number {
+  if (!cTitle) return -1;
+  let score = 0;
+  if (cTitle === qTitle) score += 100;
+  else if (cTitle.includes(qTitle) || qTitle.includes(cTitle)) score += 60;
+  else return -1;
+
+  if (COVER_MARKER_RE.test(cTitle)) score -= 30;
+
+  const qTokens = artistTokens(qArtist);
+  const cTokens = artistTokens(cArtist);
+  if (qTokens.length && cTokens.length) {
+    let best = -40;
+    for (const a of qTokens) {
+      for (const b of cTokens) {
+        if (a === b) {
+          best = 40;
+          break;
+        }
+        if (a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a))) {
+          best = Math.max(best, 25);
+        }
+      }
+      if (best === 40) break;
+    }
+    score += best;
+  }
+  if (qAlbum && cAlbum && (cAlbum === qAlbum || cAlbum.includes(qAlbum) || qAlbum.includes(cAlbum))) {
+    score += 15;
+  }
+  if (localDuration && candDurationMs) {
+    const diff = Math.abs(candDurationMs / 1000 - localDuration);
+    if (diff <= 3) score += 20;
+    else if (diff <= 10) score += 10;
+    else if (diff > 30) score -= 10;
+  }
+  return score;
+}
+
+// 2) iTunes Search API：公开、免 key。白嫖 Apple CDN 的超清大图：100x100bb → 600x600bb
+async function itunesCandidates(
+  title: string,
+  artist: string,
+  album: string
+): Promise<CoverCandidate[]> {
+  const term = [title, artist].filter(Boolean).join(' ');
+  if (!term) return [];
+  try {
+    const res = await fetch(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=song&limit=8`,
+      {
+        signal: AbortSignal.timeout(8000),
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FastMusic/1.0)' },
+      }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const results = Array.isArray(data?.results) ? data.results : [];
+    const qTitle = normalizeText(title);
+    const qArtist = normalizeText(artist);
+    const qAlbum = normalizeText(album);
+    const out: CoverCandidate[] = [];
+    for (const r of results) {
+      const score = scoreCoverMatch(
+        qTitle,
+        qArtist,
+        qAlbum,
+        normalizeText(r?.trackName || ''),
+        normalizeText(r?.artistName || ''),
+        normalizeText(r?.collectionName || '')
+      );
+      if (score < 65) continue;
+      const art = String(r?.artworkUrl100 || '').replace('100x100bb', '600x600bb');
+      if (!art) continue;
+      out.push({
+        source: 'itunes',
+        url: art,
+        matched: `${r.trackName || ''} - ${r.artistName || ''}`.trim(),
+        score,
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+// 网易云搜索结果里的 album 对象没有 picUrl（只有 picId），需要再查一次专辑详情。
+// 专辑 pic 按 album id 缓存，同一专辑的多首歌只联网一次。
+const neteaseAlbumPicCache = new Map<number, string | null>();
+
+async function neteaseAlbumPic(albumId: number): Promise<string | null> {
+  if (neteaseAlbumPicCache.has(albumId)) return neteaseAlbumPicCache.get(albumId) ?? null;
+  let pic: string | null = null;
+  try {
+    const data = await ncmFetchJson(`https://music.163.com/api/v1/album/${albumId}`);
+    pic = data?.album?.picUrl || data?.songs?.[0]?.al?.picUrl || null;
+  } catch {
+    pic = null;
+  }
+  neteaseAlbumPicCache.set(albumId, pic);
+  return pic;
+}
+
+// 3) 网易云搜索：复用歌词的明文接口。网易云 CDN 支持 ?param=WxH 裁尺寸，省带宽
+async function neteaseCandidates(
+  title: string,
+  artist: string,
+  album: string,
+  duration: number
+): Promise<CoverCandidate[]> {
+  const queries = [artist ? `${title} ${artist}` : title, ...(artist && title ? [title] : [])];
+  const seen = new Set<number>();
+  const scored: Array<{ cand: any; score: number }> = [];
+  for (const q of queries) {
+    let songs: any[] = [];
+    try {
+      songs = await searchNeteaseSongs(q, 8);
+    } catch {
+      continue;
+    }
+    for (const cand of songs) {
+      if (!cand?.id || seen.has(cand.id)) continue;
+      seen.add(cand.id);
+      const score = scoreCoverMatch(
+        normalizeText(title),
+        normalizeText(artist),
+        normalizeText(album),
+        normalizeText(cand.name || ''),
+        normalizeText((cand.artists || []).map((a: any) => a?.name || '').join('')),
+        normalizeText(cand.album?.name || ''),
+        cand.duration,
+        duration
+      );
+      if (score < 65) continue;
+      scored.push({ cand, score });
+    }
+    // 第一个查询已经够多了，不必再联网查第二个
+    if (scored.length >= 3) break;
+  }
+  scored.sort((a, b) => b.score - a.score);
+
+  const out: CoverCandidate[] = [];
+  // 专辑图片要再查一次详情，所以只取分数最高的 3 个候选
+  for (const { cand, score } of scored.slice(0, 3)) {
+    const pic =
+      cand.album?.picUrl || (cand.album?.id ? await neteaseAlbumPic(Number(cand.album.id)) : null);
+    if (!pic) continue;
+    out.push({
+      source: 'netease',
+      url: `${pic}?param=500y500`,
+      matched: `${cand.name || title} - ${(cand.artists || []).map((a: any) => a?.name || '').join(', ') || artist}`,
+      score,
+    });
+  }
+  return out;
+}
+
+// 解析顺序：磁盘缓存 → 本地内嵌 → iTunes → 网易云。allowRemote=false 时不联网。
+async function resolveCover(item: ServerMediaItem, allowRemote: boolean): Promise<CoverEntry | null> {
+  const hit = coverIndex.get(item.id);
+  if (hit) return hit;
+  if (coverMisses.has(item.id)) return null;
+
+  // 同一曲目并发请求（列表 + 播放器同时请求）只解析一次
+  const inflight = coverInFlight.get(item.id);
+  if (inflight) return inflight;
+
+  const task = (async (): Promise<CoverEntry | null> => {
+    const embedded = await extractEmbeddedCover(item);
+    if (embedded) {
+      try {
+        fs.mkdirSync(COVER_DIR, { recursive: true });
+        fs.writeFileSync(coverFile(item.id, embedded.ext), embedded.data);
+        const entry: CoverEntry = { source: 'local', ext: embedded.ext, matched: '内嵌封面', fetched_at: Date.now() };
+        coverIndex.set(item.id, entry);
+        scheduleCoverSave();
+        return entry;
+      } catch (e) {
+        console.warn('[Cover] 内嵌封面写入失败', (e as Error).message);
+      }
+    }
+
+    if (allowRemote) {
+      // 两个源并发查询，按打分选最佳候选（标题/歌手/专辑/时长），逐个尝试下载直到成功
+      const pool = (
+        await Promise.all([
+          itunesCandidates(item.title, item.artist, item.album || ''),
+          neteaseCandidates(item.title, item.artist, item.album || '', item.duration || 0),
+        ])
+      )
+        .flat()
+        .sort((a, b) => b.score - a.score);
+
+      for (const cand of pool) {
+        const img = await fetchImageBuffer(cand.url, {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        });
+        if (!img) continue;
+        try {
+          fs.mkdirSync(COVER_DIR, { recursive: true });
+          fs.writeFileSync(coverFile(item.id, img.ext), img.data);
+          const entry: CoverEntry = {
+            source: cand.source,
+            ext: img.ext,
+            url: cand.url,
+            matched: cand.matched,
+            fetched_at: Date.now(),
+          };
+          coverIndex.set(item.id, entry);
+          scheduleCoverSave();
+          return entry;
+        } catch (e) {
+          console.warn('[Cover] 远端封面写入失败', (e as Error).message);
+        }
+      }
+    }
+
+    coverMisses.add(item.id);
+    scheduleCoverSave();
+    return null;
+  })();
+
+  coverInFlight.set(item.id, task);
+  try {
+    return await task;
+  } finally {
+    coverInFlight.delete(item.id);
+  }
+}
+
+// GET /api/cover/:id → 图片字节（?local=1 只读本地内嵌，不联网）
+app.get('/api/cover/:id', async (req: Request, res: Response) => {
+  const item = MEDIA_DB.get(req.params.id);
+  if (!item) {
+    res.status(404).json({ detail: '曲目不存在' });
+    return;
+  }
+  try {
+    const entry = await resolveCover(item, req.query.local !== '1');
+    if (!entry) {
+      res.status(404).json({ detail: '未找到封面' });
+      return;
+    }
+    const file = coverFile(item.id, entry.ext);
+    if (!fs.existsSync(file)) {
+      coverIndex.delete(item.id);
+      res.status(404).json({ detail: '封面缓存文件丢失' });
+      return;
+    }
+    res.set('Content-Type', imageMime(entry.ext));
+    res.set('Cache-Control', 'public, max-age=31536000');
+    res.set('X-Cover-Source', entry.source);
+    res.sendFile(file);
+  } catch (e) {
+    console.warn('[Cover] 封面请求失败', (e as Error).message);
+    res.status(500).json({ detail: '封面获取失败' });
+  }
+});
+
+// POST /api/cover/prefetch { ids: [...] } → 批量解析（并发 8，最多 200 条），
+// 返回 id → cover_url（null = 没有封面）。列表的"预取封面"按钮走这里。
+app.post('/api/cover/prefetch', async (req: Request, res: Response) => {
+  const ids: string[] = Array.isArray(req.body?.ids) ? (req.body.ids as unknown[]).map(String) : [];
+  const limited: string[] = ids.slice(0, COVER_PREFETCH_MAX);
+  const covers: Record<string, string | null> = {};
+
+  const queue = limited.filter((id) => !coverIndex.has(id) && !coverMisses.has(id));
+  const workers = Array.from(
+    { length: Math.min(COVER_PREFETCH_CONCURRENCY, queue.length) },
+    async () => {
+      while (queue.length > 0) {
+        const id = queue.shift()!;
+        const item = MEDIA_DB.get(id);
+        if (!item) {
+          covers[id] = null;
+          continue;
+        }
+        const entry = await resolveCover(item, true);
+        covers[id] = entry ? `/api/cover/${id}` : null;
+      }
+    }
+  );
+  await Promise.all(workers);
+
+  for (const id of limited) {
+    if (!(id in covers)) covers[id] = coverIndex.has(id) ? `/api/cover/${id}` : null;
+  }
+
+  const resolved = Object.values(covers).filter(Boolean).length;
+  res.json({
+    requested: limited.length,
+    resolved,
+    cached: coverIndex.size,
+    covers,
+  });
+});
+
 // 7. 健康检查
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', server: 'Express Media Server', total_tracks: MEDIA_DB.size });
@@ -1555,6 +2008,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
 // ================= Vite / 静态文件托管 =================
 async function startServer() {
   loadLyricCache(); // 歌词缓存（网易云）持久化，重启后不重复请求
+  loadCoverIndex(); // 封面缓存（covers/ + fastmusic_covers.json）
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

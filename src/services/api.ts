@@ -225,6 +225,29 @@ export class MediaApiService {
     }
   }
 
+  // 封面图片 URL（服务端三级兜底：本地内嵌 → iTunes → 网易云，字节缓存到 covers/）
+  getCoverUrl(track: MediaItem): string {
+    return this.getFullUrl(`/api/cover/${track.id}`);
+  }
+
+  // 批量预取封面：服务端并发解析，返回 id → cover_url（null = 没有封面）
+  async prefetchCovers(ids: string[]): Promise<Record<string, string | null>> {
+    if (ids.length === 0) return {};
+    try {
+      const res = await fetch(this.getFullUrl('/api/cover/prefetch'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+        signal: AbortSignal.timeout(90000),
+      });
+      if (!res.ok) return {};
+      const data = await res.json();
+      return (data && data.covers) || {};
+    } catch {
+      return {};
+    }
+  }
+
   // 歌词：服务端代理网易云明文接口（搜索 title+artist → 匹配最佳歌曲 → 取 LRC）。
   // 网易云接口可能慢（首次 ~1-2s），超时返回 null 而不是抛错。
   async getLyrics(title: string, artist: string, duration?: number): Promise<LyricsResult | null> {

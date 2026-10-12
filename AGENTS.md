@@ -131,6 +131,7 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   still has a vestigial `res.redirect()` branch for `http(s)://` abs_path (`server.ts:522-523`)
   that is never hit in practice; the real path is local `fs.createReadStream` + HTTP `206`
   Range streaming.
+- **封面引擎（server.ts）**：三级兜底 `本地内嵌 → iTunes → 网易云`。磁盘缓存 `covers/<id>.<ext>` + 索引 `fastmusic_covers.json`（`{covers:{id:{source,ext,url,matched,fetched_at}}, misses:[id…]}`，原子 tmp+rename，写盘防抖 5s）。`resolveCover()` 顺序：内存索引 → 已查过但无封面（`coverMisses`）直接返回 null → `extractEmbeddedCover()`（第二次 `parseFile`，`skipCovers:false`；music-metadata 不解析 Matroska，所以 `.mkv/.webm` 只能靠远端）→ `itunesCandidates()` + `neteaseCandidates()` 并发，按 `scoreCoverMatch()` 打分（标题精确 100 / 包含 60，歌手一致 +40 / 部分 +25 / 不符 −40，翻唱·歌みた −30，专辑一致 +15，网易云时长 ±3s +20），阈值 65，取最高分候选下载。`GET /api/cover/:id`（`?local=1` 跳过联网，`Cache-Control: public, max-age=31536000`，`X-Cover-Source` 头）；`POST /api/cover/prefetch`（≤200 ids，并发 8）。**列表行只有 `cover_url` 已缓存时才渲染 `<img>`**（`decorateItem()` 只读索引，不联网），所以列表不会触发网络；播放器中间列的唱片始终请求 `/api/cover/:id`（请求本身触发解析）。网易云搜索结果里的 album 只有 `picId`，需要 `neteaseAlbumPic(albumId)` 再查 `/api/v1/album/{id}`（按 album id 缓存，每曲目最多 3 次）。唱片在 `VideoJsPlayer.tsx` 的中间列（不在 `AudioVisualizer`），所以频谱模式选 `none` 时仍然旋转。
 - **歌词来自网易云明文接口**（不需要 weapi/AES）：`GET /api/lyrics?title=&artist=&duration=` 或 `?id=<网易云ID>`。
   服务端先用 `https://music.163.com/api/search/get?s=...&type=1` 找歌曲 ID，再取
   `https://music.163.com/api/song/lyric?id=...&lv=1&tv=1&rv=1`。**必须带浏览器 UA + Referer**，

@@ -5,6 +5,8 @@ dist/
 # 运行时产物 (用户数据, 不上传)
 fastmusic_db.json
 fastmusic_lyrics.json
+fastmusic_covers.json
+covers/
 server.log
 .server.pid
 mtv_cache/

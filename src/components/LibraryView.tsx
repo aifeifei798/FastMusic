@@ -149,6 +149,27 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [transcodeById, setTranscodeById] = useState<Record<string, TranscodeInfo>>({});
   const [transcodeSummary, setTranscodeSummary] = useState<TranscodeSummary | null>(null);
 
+  // 封面预取：服务端只在封面已解析/缓存时给出 cover_url，所以列表不会随手联网。
+  // "预取封面"按钮批量解析当前已加载的条目（服务端并发 8，最多 200 条），
+  // 结果存本地 map，行渲染直接用。
+  const [coverById, setCoverById] = useState<Record<string, string | null>>({});
+  const [coverPrefetching, setCoverPrefetching] = useState<boolean>(false);
+  const [coverPrefetchInfo, setCoverPrefetchInfo] = useState<string>('');
+
+  const coverOf = (track: MediaItem): string | undefined => track.cover_url || coverById[track.id] || undefined;
+
+  const handlePrefetchCovers = async () => {
+    if (coverPrefetching) return;
+    const ids = tracksRef.current.map((t) => t.id);
+    if (ids.length === 0) return;
+    setCoverPrefetching(true);
+    const covers = await mediaApi.prefetchCovers(ids);
+    setCoverById((prev) => ({ ...prev, ...covers }));
+    const resolved = Object.values(covers).filter(Boolean).length;
+    setCoverPrefetchInfo(`封面预取完成：命中 ${resolved} / ${ids.length}`);
+    setCoverPrefetching(false);
+  };
+
   useEffect(() => {
     const refresh = async () => {
       const ids = tracksRef.current.filter((t) => t.ext === '.mkv').map((t) => t.id);
@@ -442,6 +463,24 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             </button>
           )}
 
+          {/* 封面预取：批量解析当前已加载条目的封面（本地内嵌 → iTunes → 网易云），
+              结果缓存到 covers/，列表/歌手/专辑卡片下次渲染就有图 */}
+          <button
+            onClick={handlePrefetchCovers}
+            title="为当前列表条目获取封面：优先本地内嵌封面，其次 iTunes / 网易云"
+            className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors shrink-0 flex items-center gap-1.5 ${
+              coverPrefetching
+                ? 'bg-rose-950/70 text-rose-300 border-rose-800/60'
+                : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+            }`}
+          >
+            {coverPrefetching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Disc className="w-3.5 h-3.5" />}
+            <span>{coverPrefetching ? '获取封面…' : '预取封面'}</span>
+          </button>
+          {coverPrefetchInfo && !coverPrefetching && (
+            <span className="text-[11px] text-neutral-500 shrink-0">{coverPrefetchInfo}</span>
+          )}
+
           {/* .mkv 换容器(remux)进度统计：已就绪 / 进行中 / 排队 */}
           {transcodeSummary && transcodeSummary.total_mkv > 0 && (
             <div
@@ -603,11 +642,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
                       {/* Title and Artist */}
                       <div className="col-span-8 sm:col-span-5 flex items-center gap-3 min-w-0">
-                        <div className={`${rowDensity === 'compact' ? 'w-7 h-7' : 'w-9 h-9'} rounded-lg bg-neutral-800 border border-neutral-700/80 flex items-center justify-center shrink-0 overflow-hidden relative`} style={track.cover_url ? undefined : { background: coverGradient(track.title) }}>
-                          {track.cover_url ? (
+                        <div className={`${rowDensity === 'compact' ? 'w-7 h-7' : 'w-9 h-9'} rounded-lg bg-neutral-800 border border-neutral-700/80 flex items-center justify-center shrink-0 overflow-hidden relative`} style={coverOf(track) ? undefined : { background: coverGradient(track.title) }}>
+                          {coverOf(track) ? (
                             <img
-                              src={track.cover_url}
+                              src={coverOf(track)}
                               alt={track.title}
+                              loading="lazy"
                               referrerPolicy="no-referrer"
                               className="w-full h-full object-cover"
                             />
@@ -958,11 +998,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
                       {/* Title and Artist */}
                       <div className="col-span-8 sm:col-span-5 flex items-center gap-3 min-w-0">
-                        <div className={`${rowDensity === 'compact' ? 'w-7 h-7' : 'w-9 h-9'} rounded-lg bg-neutral-800 border border-neutral-700/80 flex items-center justify-center shrink-0 overflow-hidden relative`} style={track.cover_url ? undefined : { background: coverGradient(track.title) }}>
-                          {track.cover_url ? (
+                        <div className={`${rowDensity === 'compact' ? 'w-7 h-7' : 'w-9 h-9'} rounded-lg bg-neutral-800 border border-neutral-700/80 flex items-center justify-center shrink-0 overflow-hidden relative`} style={coverOf(track) ? undefined : { background: coverGradient(track.title) }}>
+                          {coverOf(track) ? (
                             <img
-                              src={track.cover_url}
+                              src={coverOf(track)}
                               alt={track.title}
+                              loading="lazy"
                               referrerPolicy="no-referrer"
                               className="w-full h-full object-cover"
                             />

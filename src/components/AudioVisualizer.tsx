@@ -5,20 +5,12 @@ export type VisualizerMode = 'bars' | 'wave' | 'circle' | 'mirrored' | 'none';
 
 interface AudioVisualizerProps {
   isPlaying: boolean;
-  coverUrl?: string;
-  title: string;
-  artist: string;
-  album: string;
   mediaElement?: HTMLMediaElement | null;
   visualizerMode?: VisualizerMode;
 }
 
 export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   isPlaying,
-  coverUrl,
-  title,
-  artist,
-  album,
   mediaElement,
   visualizerMode = 'bars'
 }) => {
@@ -346,45 +338,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         className="absolute inset-0 w-full h-full object-cover pointer-events-none opacity-85"
       />
 
-      {/* Mode switcher lives in the player's top overlay bar (same row as the media badge) */}
-
-      {/* Central Vinyl / Disc Visual */}
-      <div className="relative z-10 flex flex-col items-center text-center mt-2">
-        <div className="relative group">
-          {/* Outer glowing vinyl platter */}
-          <div
-            className={`w-40 h-40 sm:w-52 sm:h-52 rounded-full bg-neutral-950 border-4 border-neutral-800/90 shadow-2xl flex items-center justify-center p-3 transition-transform duration-700 ${
-              isPlaying ? 'animate-[spin_14s_linear_infinite] shadow-rose-950/50' : ''
-            }`}
-          >
-            {/* Vinyl grooves */}
-            <div className="w-full h-full rounded-full border border-neutral-800 flex items-center justify-center p-3.5">
-              <div className="w-full h-full rounded-full border border-neutral-800/60 flex items-center justify-center p-4">
-                {/* Center album artwork */}
-                <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-full overflow-hidden shadow-inner border-2 border-neutral-700 bg-neutral-900 flex items-center justify-center relative">
-                  {coverUrl ? (
-                    <img
-                      src={coverUrl}
-                      alt={title}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-tr from-rose-950 via-neutral-900 to-neutral-950 flex items-center justify-center text-rose-400 font-bold text-xl">
-                      🎵
-                    </div>
-                  )}
-                  {/* Spindle center hole */}
-                  <div className="absolute w-4 h-4 rounded-full bg-neutral-950 border-2 border-neutral-700" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 歌名/歌手由 VideoJsPlayer 的左侧信息列渲染, 这里只保留唱片本身,
-           让唱片在舞台中央留出左右两列(左: 曲目信息, 右: 歌词) */}
-      </div>
+      {/* Mode switcher lives in the player's top overlay bar (same row as the media badge).
+          唱片本身由 VideoJsPlayer 的舞台中间列渲染（频谱选"无"时仍然转），这里只画 canvas。 */}
     </div>
   );
 };
