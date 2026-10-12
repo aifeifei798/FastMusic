@@ -14,6 +14,7 @@
                         ├─ 增量扫描 + 持久化索引 (fastmusic_db.json)
                         ├─ .mkv → MP4 remux / VP9 转码 sidecar
                         ├─ 封面三级兜底 + 磁盘缓存 (covers/)
+                        ├─ 歌词解析 + 磁盘缓存 (lyrics/)
                         └─ /api/stream/:id (HTTP 206 Range 流式)
 ```
 
@@ -29,7 +30,8 @@
 - **音频播放**: 视频.js 音频图 `source → 10 段 BiquadFilter EQ → boostGain → analyser → destination`;条形 / 波形 / 光晕环 / 对称频谱 / **无** 五种视觉模式;EQ 状态持久化到 localStorage。
 - **音量增强 ×2**: 默认音量 70%,音量滑块旁有 ×2 增强开关(靠音频图里的 GainNode 实现,状态持久化到 localStorage `fastmusic_boost`)。
 - **控制栏自动隐藏**: 播放中 3.5 秒无鼠标操作自动隐藏,鼠标进入播放区重新显示,离开立即隐藏(音频与视频统一)。
-- **歌词**: 网易云歌词竖列(当前行居中高亮,上下行淡出),控制栏 Captions 按钮或 `L` 切换,"Aa" 面板可调字号与(视频时)歌词列宽;工具栏「预取歌词」按钮批量解析当前列表(并发 3 + 200ms 节流,最多 200 条),预取后切歌歌词秒出;「只看有歌词」筛选走服务端歌词缓存,列表行有歌词图标 badge。
+- **歌词**: 网易云歌词竖列(当前行居中高亮,上下行淡出),控制栏 Captions 按钮或 `L` 切换,"Aa" 面板可调字号与(视频时)歌词列宽;「只看有歌词」筛选走服务端歌词缓存,列表行有歌词图标 badge。
+- **全库缓存任务(系统配置)**: 页头 / 页脚的「系统配置」面板里有四个后台任务 —— 缓存全部歌曲 / MTV 封面、全部歌手封面、全部专辑封面、全部歌曲 / MTV 歌词。任务在服务端后台跑(关闭弹窗继续执行),每 2 秒刷新进度条、命中 / 无结果计数与剩余时间估算;已缓存的条目自动跳过,所以重复点击只是"补齐新增内容"。手动停止后显示「已停止 · 剩余 N 条」,下次再启动从剩余部分继续。
 - **快捷键**: `J`/`K` 上一首/下一首, `S` 收藏, `L` 歌词, `R` 随心电台, `?` 快捷键面板, `Esc` 关闭。
 - **样式**: 全部用 Tailwind utility 类(含 arbitrary variant / arbitrary property),`src/index.css` 只有两个 `@import`,没有手写 CSS 规则。
 
@@ -44,7 +46,7 @@
 ./server.sh start        # 自动 npm install, 后台运行, 健康检查 /api/health
 ```
 
-打开 `http://localhost:3000`,在「服务器配置」里添加音乐目录,然后点扫描(或启动前设置 `MEDIA_DIRS="/music,/mtv"`)。
+打开 `http://localhost:3000`,在「系统配置」里添加音乐目录,然后点扫描(或启动前设置 `MEDIA_DIRS="/music,/mtv"`)。
 
 其他命令:
 
@@ -59,9 +61,15 @@
 | `PORT` | `3000` | 服务端口 |
 | `MEDIA_DIRS` | 空 | 预置扫描目录,逗号或分号分隔,例如 `MEDIA_DIRS="/music,/mtv"`;也可在「服务器配置」UI 或 `POST /api/directories` 添加(配置持久化到 `fastmusic_db.json`) |
 | `PRETRANCODE_MKV` | 开启 | 设为 `0` 时禁用启动后的 mkv 后台预转码队列(按需转码仍生效) |
+| `SCAN_CONCURRENCY` | `8` | 扫描时并行解析文件 worker 数(music-metadata 是瓶颈,8 并发 ≈ 5x 加速) |
+| `TRANCODE_CONCURRENCY` | `3` | 同时转码 / remux 的 `.mkv` 数量 |
+| `COVER_PREFETCH_CONCURRENCY` | `8` | 全库封面任务并发数 |
+| `COVER_PREFETCH_DELAY_MS` | `80` | 全库封面任务每条之间的节流间隔 |
+| `LYRIC_PREFETCH_CONCURRENCY` | `3` | 全库歌词任务并发数(网易云对高频请求会限流,别调太高) |
+| `LYRIC_PREFETCH_DELAY_MS` | `200` | 全库歌词任务每条之间的节流间隔 |
 | `NODE_ENV` | dev | `production` 时服务预构建的 `dist/`,否则内嵌 Vite dev server |
 
-扫描目录通过 UI(ServerConfigModal)或 `POST /api/directories` 配置。
+扫描目录与全库缓存任务都在「系统配置」(SystemConfigModal)里配置,也可用 `POST /api/directories` 等 API 直接操作。
 
 ## 📂 目录结构
 
@@ -74,6 +82,7 @@ src/
     VideoJsPlayer.tsx  # 播放器 + 音频图 (EQ/analyser) + 控制栏
     AudioVisualizer.tsx# 频谱可视化 (纯消费者, 读 window._fastMusicAnalyser)
     LibraryView.tsx    # 媒体库列表 (内部滚动 + 增量加载)
+    SystemConfigModal.tsx # 扫描目录 + 全库封面/歌词缓存任务
     ...
   services/api.ts      # 客户端 API 单例
   utils/ui.ts          # 共享 Tailwind 类常量(滚动条样式)
@@ -97,13 +106,16 @@ src/
 | `GET /api/transcode/summary` | 全库 `.mkv` 换容器进度汇总:`{total_mkv, ready, running, queued, pending, error}` |
 | `GET /api/transcode/status?ids=a,b,c` | 批量只读状态(列表每 10s 轮询,不触发转码) |
 | `GET /api/lyrics` | 网易云歌词代理:`?title=&artist=&duration=`(自动搜索匹配)或 `?id=<网易云歌曲ID>`;返回 `{found, lyric, tlyric, romalrc}` |
-| `POST /api/lyrics/prefetch` | `{ids:[...]}` 批量解析歌词(并发 3 + 每条 200ms 节流,最多 200 条),返回 `{requested, resolved, cached, lyrics:{id:bool}}`;结果持久化到 `fastmusic_lyrics.json` |
+| `POST /api/lyrics/prefetch` | `{ids:[...]}` 批量解析歌词(并发 3 + 每条 200ms 节流,最多 200 条),返回 `{requested, resolved, cached, lyrics:{id:bool}}` |
 | `GET /api/cover/:id` | 封面图片字节(内嵌 → iTunes → 网易云三级兜底,磁盘缓存);`?local=1` 只读内嵌不联网;响应带 `X-Cover-Source` 与 `Cache-Control: max-age=31536000` |
 | `POST /api/cover/prefetch` | `{ids:[...]}` 批量解析(并发 8,最多 200 条),返回 `{requested, resolved, cached, covers:{id:url\|null}}` |
+| `POST /api/cache/run` | `{kind:"track_covers"\|"artist_covers"\|"album_covers"\|"track_lyrics"}` 启动全库缓存任务(后台执行,已缓存的条目自动跳过) |
+| `GET /api/cache/status` | 四个任务的进度 `{kind,label,total,done,hits,misses,errors,running,stopped,remaining,etaSeconds}` + 全库统计 `{tracks,artists,albums,covers_cached,cover_misses,lyrics_cached,lyric_hits}` |
+| `POST /api/cache/stop` | `{kind}` 停止任务(已缓存的条目保留,下次启动从剩余部分继续) |
 
 ## 📝 已知事项
 
-- 音乐文件本身不在仓库内;索引 `fastmusic_db.json`、转码缓存 `mtv_cache/`、日志均已 gitignore。
+- 音乐文件本身不在仓库内;索引 `fastmusic_db.json`、转码缓存 `mtv_cache/`、封面缓存 `covers/` + `fastmusic_covers.json`、歌词缓存 `lyrics/` + `fastmusic_lyrics.json`、日志均已 gitignore。
 - `.webm` 既是音频容器也是视频容器:服务端按实际解码结果分类,客户端用 `videoWidth > 0` 判断画面 vs 频谱。
 - 首次全量扫描较慢(music-metadata 逐文件解析);后续增量扫描很快。
 - 歌词来自网易云明文接口(`music.163.com/api/song/lyric`),服务端代理 + 缓存(`fastmusic_lyrics.json`,已 gitignore);本地曲库标题/歌手若与网易云不一致,可能匹配到翻唱版本或无歌词。

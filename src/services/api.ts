@@ -1,4 +1,4 @@
-import { MediaItem, ArtistSummary, AlbumSummary, ScanResponse, PaginatedTracksResponse, RadioChannel, TranscodeStatus, TranscodeInfo, TranscodeSummary, LyricsResult, TrackSort } from '../types/media';
+import { MediaItem, ArtistSummary, AlbumSummary, ScanResponse, PaginatedTracksResponse, RadioChannel, TranscodeStatus, TranscodeInfo, TranscodeSummary, LyricsResult, TrackSort, CacheJob, CacheJobKind, CacheStatus } from '../types/media';
 export class MediaApiService {
   private baseUrl: string;
 
@@ -270,6 +270,50 @@ export class MediaApiService {
       };
     } catch {
       return { requested: 0, resolved: 0, cached: 0, lyrics: {} };
+    }
+  }
+
+  // 全库缓存任务（系统配置里的 4 个按钮）：服务端后台跑，前端轮询进度
+  async getCacheStatus(): Promise<CacheStatus> {
+    try {
+      const res = await fetch(this.getFullUrl('/api/cache/status'), {
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) return { jobs: [], stats: null };
+      const data = await res.json();
+      return { jobs: data.jobs || [], stats: data.stats || null };
+    } catch {
+      return { jobs: [], stats: null };
+    }
+  }
+
+  async runCacheJob(kind: CacheJobKind): Promise<CacheJob | null> {
+    try {
+      const res = await fetch(this.getFullUrl('/api/cache/run'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.job || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async stopCacheJob(kind: CacheJobKind): Promise<CacheJob | null> {
+    try {
+      const res = await fetch(this.getFullUrl('/api/cache/stop'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.job || null;
+    } catch {
+      return null;
     }
   }
 

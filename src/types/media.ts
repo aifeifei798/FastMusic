@@ -117,6 +117,39 @@ export interface PlayHistoryItem {
   playedAt: number;
 }
 
+// 全库缓存任务（系统配置里的 4 个按钮，服务端后台执行）
+export type CacheJobKind = 'track_covers' | 'artist_covers' | 'album_covers' | 'track_lyrics';
+
+export interface CacheJob {
+  kind: CacheJobKind;
+  label: string;
+  total: number;      // 全库条目数（含已缓存的）
+  done: number;       // 已处理（含跳过）
+  hits: number;       // 命中（有封面 / 有歌词）
+  misses: number;     // 查过但没有结果
+  errors: number;     // 网络/解析错误
+  running: boolean;
+  startedAt: number;
+  finishedAt: number | null;
+  remaining: number;  // 队列剩余
+  etaSeconds: number; // 按当前速率估算的剩余时间
+}
+
+export interface CacheStats {
+  tracks: number;
+  artists: number;
+  albums: number;
+  covers_cached: number;
+  cover_misses: number;
+  lyrics_cached: number;
+  lyric_hits: number;
+}
+
+export interface CacheStatus {
+  jobs: CacheJob[];
+  stats: CacheStats | null;
+}
+
 export type RadioChannel = 'all' | 'audio' | 'video';
 
 export interface RadioResponse {

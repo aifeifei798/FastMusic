@@ -1402,34 +1402,99 @@ interface LyricResult {
   fetched_at: number;
 }
 
-const LYRIC_CACHE_MAX = 800;
-const lyricCache = new Map<string, LyricResult>();
+// 缓存结构：内存里只存"查过 / 没查过"的元信息（几十字节一条），完整 LRC 文本写到
+// lyrics/<hash>.json。这样"缓存全部歌词"跑完 3 万+ 条也只占几 MB 内存，而不是几百 MB。
+const LYRIC_DIR = path.join(__dirname, 'lyrics');
 const LYRIC_DB_FILE = path.join(__dirname, 'fastmusic_lyrics.json');
+
+interface LyricEntry {
+  found: boolean;
+  file?: string; // lyrics/<hash>.json（found=true 时才有）
+  fetched_at: number;
+}
+
+const lyricCache = new Map<string, LyricEntry>();
 
 function lyricCacheKey(title: string, artist: string): string {
   return `${normalizeText(title)}|${normalizeText(artist)}`;
 }
 
+function lyricFileFor(key: string): string {
+  return path.join(LYRIC_DIR, `${crypto.createHash('md5').update(key).digest('hex')}.json`);
+}
+
+// 读歌词文本（本地文件，微秒级）。未命中返回 null。
+function readLyric(key: string): LyricResult | null {
+  const entry = lyricCache.get(key);
+  if (!entry || !entry.found || !entry.file) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(entry.file, 'utf8')) as LyricResult;
+    return data && data.lyric ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeLyric(key: string, result: LyricResult): void {
+  const found = Boolean(result.found && result.lyric);
+  let file: string | undefined;
+  if (found) {
+    try {
+      fs.mkdirSync(LYRIC_DIR, { recursive: true });
+      file = lyricFileFor(key);
+      fs.writeFileSync(file, JSON.stringify(result));
+    } catch (e) {
+      console.warn('[Lyrics] 歌词文件写入失败', (e as Error).message);
+      file = undefined;
+    }
+  }
+  lyricCache.set(key, { found, file, fetched_at: Date.now() });
+  scheduleLyricSave();
+}
+
 function loadLyricCache(): void {
   try {
     if (!fs.existsSync(LYRIC_DB_FILE)) return;
-    const data = JSON.parse(fs.readFileSync(LYRIC_DB_FILE, 'utf8')) as Record<string, LyricResult>;
-    for (const [k, v] of Object.entries(data)) {
-      if (v && typeof v.lyric === 'string') lyricCache.set(k, v);
+    const raw = JSON.parse(fs.readFileSync(LYRIC_DB_FILE, 'utf8')) as any;
+    // 旧格式是 { key: LyricResult }，新格式是 { lyrics: { key: LyricEntry } } —— 自动迁移
+    const entries: Record<string, any> = raw && raw.lyrics ? raw.lyrics : raw;
+    fs.mkdirSync(LYRIC_DIR, { recursive: true });
+    let hits = 0;
+    for (const [k, v] of Object.entries(entries)) {
+      if (!v || typeof v !== 'object') continue;
+      // 旧格式把 LRC 文本内联在索引里，迁移到 lyrics/<hash>.json
+      const file = lyricFileFor(k);
+      if (typeof v.lyric === 'string' && v.lyric) {
+        try {
+          fs.writeFileSync(file, JSON.stringify(v));
+        } catch (e) {
+          console.warn('[Lyrics] 迁移歌词文件失败', (e as Error).message);
+        }
+      }
+      // 索引里 found=false 但文件存在（旧版本迁移遗留）→ 自愈为命中
+      const found = Boolean(v.found) || fs.existsSync(file);
+      if (!found) {
+        lyricCache.set(k, { found: false, fetched_at: v.fetched_at || Date.now() });
+        continue;
+      }
+      lyricCache.set(k, { found: true, file, fetched_at: v.fetched_at || Date.now() });
+      hits++;
     }
-    console.log(`[Lyrics] 已加载歌词缓存 ${lyricCache.size} 条`);
+    // 迁移后重写索引（只存元信息，文本在 lyrics/ 里）
+    if (raw && !raw.lyrics) saveLyricCache();
+    console.log(`[Lyrics] 已加载歌词缓存 ${lyricCache.size} 条（命中 ${hits}）`);
   } catch (e) {
     console.warn('[Lyrics] 歌词缓存读取失败', (e as Error).message);
   }
 }
 
-// 原子写（tmp + rename），失败只告警不影响播放
+// 原子写（tmp + rename），失败只告警不影响播放。只写索引，歌词文本在 lyrics/ 里。
 function saveLyricCache(): void {
   try {
-    const entries: Record<string, LyricResult> = {};
-    for (const [k, v] of lyricCache) entries[k] = v;
+    const lyrics: Record<string, LyricEntry> = {};
+    for (const [k, v] of lyricCache) lyrics[k] = v;
     const tmp = `${LYRIC_DB_FILE}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(entries));
+    fs.writeFileSync(tmp, JSON.stringify({ lyrics }));
     fs.renameSync(tmp, LYRIC_DB_FILE);
   } catch (e) {
     console.warn('[Lyrics] 歌词缓存写入失败', (e as Error).message);
@@ -1525,8 +1590,7 @@ async function resolveLyrics(
   duration: number
 ): Promise<LyricResult | null> {
   const key = lyricCacheKey(title, artist);
-  const cached = lyricCache.get(key);
-  if (cached) return cached.found ? cached : null;
+  if (lyricCache.has(key)) return readLyric(key);
 
   const inflight = lyricInFlight.get(key);
   if (inflight) return inflight;
@@ -1559,9 +1623,7 @@ async function resolveLyrics(
           if (lyric) {
             lyric.matched_title = cand.name || title;
             lyric.matched_artist = (cand.artists || []).map((a: any) => a?.name || '').join(', ') || artist;
-            if (lyricCache.size >= LYRIC_CACHE_MAX) lyricCache.delete(lyricCache.keys().next().value as string);
-            lyricCache.set(key, lyric);
-            scheduleLyricSave();
+            storeLyric(key, lyric);
             return lyric;
           }
         }
@@ -1569,8 +1631,7 @@ async function resolveLyrics(
 
       // 负结果也缓存，避免每次切歌都重复打网络
       const miss: LyricResult = { found: false, lyric: '', tlyric: '', romalrc: '', fetched_at: Date.now() };
-      lyricCache.set(key, miss);
-      scheduleLyricSave();
+      storeLyric(key, miss);
       return null;
     } catch (e) {
       console.warn('[Lyrics] 获取歌词失败', (e as Error).message);
@@ -1601,9 +1662,13 @@ app.get('/api/lyrics', async (req: Request, res: Response) => {
   // 播放器直接给网易云 ID 时不走搜索
   if (directId) {
     const key = `id:${directId}`;
-    const cached = lyricCache.get(key);
+    const cached = readLyric(key);
     if (cached) {
       res.json({ ...cached, cached: true });
+      return;
+    }
+    if (lyricCache.has(key)) {
+      res.json({ found: false, lyric: '', tlyric: '', romalrc: '', cached: true });
       return;
     }
     try {
@@ -1611,8 +1676,7 @@ app.get('/api/lyrics', async (req: Request, res: Response) => {
       const result: LyricResult = lyric
         ? { ...lyric, matched_title: title }
         : { found: false, lyric: '', tlyric: '', romalrc: '', fetched_at: Date.now() };
-      lyricCache.set(key, result);
-      scheduleLyricSave();
+      storeLyric(key, result);
       res.json({ ...result, cached: false });
     } catch (e) {
       console.warn('[Lyrics] 获取歌词失败', (e as Error).message);
@@ -1622,9 +1686,13 @@ app.get('/api/lyrics', async (req: Request, res: Response) => {
   }
 
   const key = lyricCacheKey(title, artist);
-  const cached = lyricCache.get(key);
-  if (cached) {
-    res.json({ ...cached, cached: true });
+  if (lyricCache.has(key)) {
+    const cached = readLyric(key);
+    res.json(
+      cached
+        ? { ...cached, cached: true }
+        : { found: false, lyric: '', tlyric: '', romalrc: '', cached: true }
+    );
     return;
   }
 
@@ -1663,8 +1731,7 @@ app.post('/api/lyrics/prefetch', async (req: Request, res: Response) => {
         if (hit) {
           lyrics[id] = hit.found;
           continue;
-        }
-        lyrics[id] = (await resolveLyrics(item.title, item.artist, item.duration || 0)) !== null;
+        }        lyrics[id] = (await resolveLyrics(item.title, item.artist, item.duration || 0)) !== null;
         await new Promise((r) => setTimeout(r, 200));
       }
     })
@@ -2112,6 +2179,270 @@ app.post('/api/cover/prefetch', async (req: Request, res: Response) => {
     resolved,
     cached: coverIndex.size,
     covers,
+  });
+});
+
+// ============================================================
+// 10. 全库缓存任务（系统配置里的 4 个按钮）
+//   后台跑，前端轮询进度；结果持久化（covers/ + fastmusic_covers.json /
+//   lyrics/ + fastmusic_lyrics.json），中断后重跑会自动跳过已缓存的条目。
+//   网易云/iTunes 对高频请求会限流，所以每条任务之间小睡（环境变量可调）。
+// ============================================================
+type CacheJobKind = 'track_covers' | 'artist_covers' | 'album_covers' | 'track_lyrics';
+
+const CACHE_JOB_LABELS: Record<CacheJobKind, string> = {
+  track_covers: '全部歌曲 / MTV 封面',
+  artist_covers: '全部歌手封面',
+  album_covers: '全部专辑封面',
+  track_lyrics: '全部歌曲 / MTV 歌词',
+};
+
+const COVER_TASK_DELAY_MS = Math.max(0, Number(process.env.COVER_PREFETCH_DELAY_MS ?? 80));
+const LYRIC_TASK_DELAY_MS = Math.max(0, Number(process.env.LYRIC_PREFETCH_DELAY_MS ?? 200));
+const COVER_TASK_CONCURRENCY = Math.max(1, Number(process.env.COVER_PREFETCH_CONCURRENCY ?? 8));
+const LYRIC_TASK_CONCURRENCY = Math.max(1, Number(process.env.LYRIC_PREFETCH_CONCURRENCY ?? 3));
+
+interface CacheJob {
+  kind: CacheJobKind;
+  label: string;
+  total: number;   // 全库条目数（含已缓存的）
+  done: number;    // 已处理（含跳过）
+  hits: number;    // 命中（有封面 / 有歌词）
+  misses: number;  // 查过但没有结果
+  errors: number;  // 网络/解析错误
+  running: boolean;
+  stopped: boolean;  // 手动停止（队列还有剩余）
+  startedAt: number;
+  finishedAt: number | null;
+  startDone: number; // 启动时已处理条数（用于计算真实速率）
+  queue: string[]; // 待处理 id（内部，不返回给前端）
+}
+
+const cacheJobs = new Map<CacheJobKind, CacheJob>();
+const cacheJobStop = new Set<CacheJobKind>();
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// 歌手/专辑的代表曲目（与 /api/artists /api/albums 一致：优先取已缓存封面的曲目）
+function artistTargets(): Array<{ trackId: string }> {
+  const map = new Map<string, { coverId?: string; sampleId: string }>();
+  for (const item of MEDIA_DB.values()) {
+    let info = map.get(item.artist);
+    if (!info) {
+      info = { sampleId: item.id };
+      map.set(item.artist, info);
+    }
+    if (!info.coverId && coverIndex.has(item.id)) info.coverId = item.id;
+  }
+  return Array.from(map.values()).map((info) => ({ trackId: info.coverId || info.sampleId }));
+}
+
+function albumTargets(): Array<{ trackId: string }> {
+  const map = new Map<string, { coverId?: string; sampleId: string }>();
+  for (const item of MEDIA_DB.values()) {
+    const key = `${item.artist}___${item.album}`;
+    let info = map.get(key);
+    if (!info) {
+      info = { sampleId: item.id };
+      map.set(key, info);
+    }
+    if (!info.coverId && coverIndex.has(item.id)) info.coverId = item.id;
+  }
+  return Array.from(map.values()).map((info) => ({ trackId: info.coverId || info.sampleId }));
+}
+
+// 每次（重新）启动任务时重建队列：已缓存 / 已查过没有结果的一律跳过
+function buildJob(kind: CacheJobKind): CacheJob {
+  const job: CacheJob = {
+    kind,
+    label: CACHE_JOB_LABELS[kind],
+    total: 0,
+    done: 0,
+    hits: 0,
+    misses: 0,
+    errors: 0,
+    running: false,
+    stopped: false,
+    startedAt: 0,
+    finishedAt: null,
+    startDone: 0,
+    queue: [],
+  };
+
+  if (kind === 'track_lyrics') {
+    const seenKeys = new Set<string>();
+    for (const item of MEDIA_DB.values()) {
+      const key = lyricCacheKey(item.title, item.artist);
+      const entry = lyricCache.get(key);
+      if (entry) {
+        job.done++;
+        if (entry.found) job.hits++;
+        else job.misses++;
+        continue;
+      }
+      if (seenKeys.has(key)) continue; // 同 (标题, 歌手) 只联网一次
+      seenKeys.add(key);
+      job.queue.push(item.id);
+    }
+  } else {
+    const ids = kind === 'artist_covers' ? artistTargets().map((t) => t.trackId) : kind === 'album_covers' ? albumTargets().map((t) => t.trackId) : Array.from(MEDIA_DB.keys());
+    const seen = new Set<string>();
+    for (const id of ids) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (coverIndex.has(id)) {
+        job.done++;
+        job.hits++;
+      } else if (coverMisses.has(id)) {
+        job.done++;
+        job.misses++;
+      } else {
+        job.queue.push(id);
+      }
+    }
+  }
+
+  job.total = job.done + job.queue.length;
+  return job;
+}
+
+async function runCacheJob(kind: CacheJobKind): Promise<void> {
+  const job = cacheJobs.get(kind)!;
+  const delay = kind === 'track_lyrics' ? LYRIC_TASK_DELAY_MS : COVER_TASK_DELAY_MS;
+  const concurrency = kind === 'track_lyrics' ? LYRIC_TASK_CONCURRENCY : COVER_TASK_CONCURRENCY;
+
+  const workers = Array.from({ length: Math.min(concurrency, job.queue.length) }, async () => {
+    while (job.queue.length > 0) {
+      if (cacheJobStop.has(kind)) break;
+      const id = job.queue.shift()!;
+      try {
+        const item = MEDIA_DB.get(id);
+        if (!item) {
+          job.errors++;
+        } else if (kind === 'track_lyrics') {
+          const lyric = await resolveLyrics(item.title, item.artist, item.duration || 0);
+          if (lyric) job.hits++;
+          else job.misses++;
+        } else {
+          const entry = await resolveCover(item, true);
+          if (entry) job.hits++;
+          else job.misses++;
+        }
+      } catch (e) {
+        job.errors++;
+        console.warn(`[Cache] ${kind} 任务失败`, (e as Error).message);
+      }
+      job.done++;
+      if (delay) await sleep(delay);
+    }
+  });
+
+  await Promise.all(workers);
+  job.running = false;
+  job.stopped = cacheJobStop.has(kind);
+  job.finishedAt = Date.now();
+  console.log(
+    `[Cache] ${job.label} 结束：命中 ${job.hits} · 无结果 ${job.misses} · 错误 ${job.errors}（队列剩余 ${job.queue.length}）`
+  );
+}
+
+function publicJob(job: CacheJob) {
+  const remaining = job.queue.length;
+  let etaSeconds = 0;
+  if (job.running && job.done > job.startDone) {
+    const elapsed = Math.max(1, (Date.now() - job.startedAt) / 1000);
+    const rate = (job.done - job.startDone) / elapsed; // 只统计本次真正联网的条目
+    etaSeconds = Math.round(remaining / rate);
+  }
+  return {
+    kind: job.kind,
+    label: job.label,
+    total: job.total,
+    done: job.done,
+    hits: job.hits,
+    misses: job.misses,
+    errors: job.errors,
+    running: job.running,
+    stopped: job.stopped,
+    startedAt: job.startedAt,
+    finishedAt: job.finishedAt,
+    remaining,
+    etaSeconds,
+  };
+}
+
+// POST /api/cache/run { kind } → 启动（已在跑则返回当前进度）
+app.post('/api/cache/run', (req: Request, res: Response) => {
+  const kind = String(req.body?.kind || '') as CacheJobKind;
+  if (!CACHE_JOB_LABELS[kind]) {
+    res.status(400).json({ detail: '未知的缓存任务类型' });
+    return;
+  }
+  const existing = cacheJobs.get(kind);
+  if (existing && existing.running) {
+    res.json({ job: publicJob(existing) });
+    return;
+  }
+  const job = buildJob(kind);
+  cacheJobs.set(kind, job);
+  cacheJobStop.delete(kind);
+  if (job.queue.length === 0) {
+    job.startedAt = Date.now();
+    job.finishedAt = Date.now();
+    res.json({ job: publicJob(job) });
+    return;
+  }
+  job.running = true;
+  job.startedAt = Date.now();
+  job.startDone = job.done;
+  console.log(`[Cache] 开始缓存 ${job.label}：待处理 ${job.queue.length} 条（并发 ${kind === 'track_lyrics' ? LYRIC_TASK_CONCURRENCY : COVER_TASK_CONCURRENCY}）`);
+  runCacheJob(kind).catch((e) => {
+    job.running = false;
+    job.finishedAt = Date.now();
+    console.warn('[Cache] 任务异常终止', (e as Error).message);
+  });
+  res.json({ job: publicJob(job) });
+});
+
+// POST /api/cache/stop { kind } → 停止（已缓存的条目保留，下次再跑自动跳过）
+app.post('/api/cache/stop', (req: Request, res: Response) => {
+  const kind = String(req.body?.kind || '') as CacheJobKind;
+  if (!CACHE_JOB_LABELS[kind]) {
+    res.status(400).json({ detail: '未知的缓存任务类型' });
+    return;
+  }
+  cacheJobStop.add(kind);
+  const job = cacheJobs.get(kind);
+  res.json({ stopped: Boolean(job && job.running), job: job ? publicJob(job) : null });
+});
+
+// GET /api/cache/status → 4 个任务进度 + 全库缓存统计
+app.get('/api/cache/status', (_req: Request, res: Response) => {
+  const jobs = (Object.keys(CACHE_JOB_LABELS) as CacheJobKind[]).map(
+    (kind) => publicJob(cacheJobs.get(kind) || buildJob(kind))
+  );
+  const artists = new Set<string>();
+  const albums = new Set<string>();
+  for (const item of MEDIA_DB.values()) {
+    artists.add(item.artist);
+    albums.add(`${item.artist}___${item.album}`);
+  }
+  let lyricHits = 0;
+  for (const entry of lyricCache.values()) if (entry.found) lyricHits++;
+
+  res.json({
+    jobs,
+    stats: {
+      tracks: MEDIA_DB.size,
+      artists: artists.size,
+      albums: albums.size,
+      covers_cached: coverIndex.size,
+      cover_misses: coverMisses.size,
+      lyrics_cached: lyricCache.size,
+      lyric_hits: lyricHits,
+    },
   });
 });
 

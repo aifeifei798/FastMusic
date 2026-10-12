@@ -13,7 +13,7 @@ import { MediaItem, ArtistSummary, AlbumSummary, PlayMode, PlayHistoryItem, Radi
 import { mediaApi } from './services/api';
 import { VideoJsPlayer } from './components/VideoJsPlayer';
 import { LibraryView } from './components/LibraryView';
-import { ServerConfigModal } from './components/ServerConfigModal';
+import { SystemConfigModal } from './components/SystemConfigModal';
 import { PlayHistoryModal } from './components/PlayHistoryModal';
 import { RadioStationBanner } from './components/RadioStationBanner';
 
@@ -26,7 +26,6 @@ export default function App() {
   const [artists, setArtists] = useState<ArtistSummary[]>([]);
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isScanning, setIsScanning] = useState<boolean>(false);
 
   // Play history state (stored in localStorage)
   const [history, setHistory] = useState<PlayHistoryItem[]>(() => {
@@ -471,18 +470,6 @@ export default function App() {
   // 键盘 J/K 走 ref，避免全局 keydown 闭包捕获旧的 playlist/currentIndex
   prevNextRef.current = { prev: handlePrevTrack, next: handleNextTrack };
 
-  const handleQuickScan = async () => {
-    setIsScanning(true);
-    try {
-      await mediaApi.scanLibrary();
-      await loadData();
-    } catch (err) {
-      console.warn('Scan trigger error:', err);
-    } finally {
-      setIsScanning(false);
-    }
-  };
-
   return (
     <div className="h-screen overflow-hidden bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-rose-500/30 selection:text-rose-200">
       {/* ================= ZONE 1, 2, 3: TOP BAR CONTRACT ================= */}
@@ -556,8 +543,8 @@ export default function App() {
               className="px-3.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-medium text-neutral-200 hover:text-white transition-colors flex items-center gap-2 shadow-sm"
             >
               <Server className="w-3.5 h-3.5 text-rose-500" />
-              <span className="hidden sm:inline">媒体服务配置 (Express)</span>
-              <span className="sm:hidden">服务</span>
+              <span className="hidden sm:inline">系统配置</span>
+              <span className="sm:hidden">配置</span>
             </button>
           </div>
         </div>
@@ -611,7 +598,6 @@ export default function App() {
             currentTrackId={currentTrack?.id || null}
             onSelectTrack={handleSelectTrack}
             onScanClick={() => setIsServerModalOpen(true)}
-            isScanning={isScanning}
             selectedArtist={selectedArtist}
             selectedAlbum={selectedAlbum}
             onFilterArtist={setSelectedArtist}
@@ -661,15 +647,7 @@ export default function App() {
               onClick={() => setIsServerModalOpen(true)}
               className="hover:text-neutral-300 transition-colors"
             >
-              媒体服务配置
-            </button>
-            <span aria-hidden="true" className="text-neutral-800">·</span>
-            <button
-              onClick={handleQuickScan}
-              disabled={isScanning}
-              className="hover:text-rose-400 transition-colors"
-            >
-              重新扫描
+              系统配置
             </button>
           </div>
         </div>
@@ -685,7 +663,7 @@ export default function App() {
         onClearHistory={handleClearHistory}
       />
 
-      <ServerConfigModal
+      <SystemConfigModal
         isOpen={isServerModalOpen}
         onClose={() => setIsServerModalOpen(false)}
         onRefreshData={loadData}

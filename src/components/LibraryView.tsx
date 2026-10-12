@@ -37,7 +37,6 @@ interface LibraryViewProps {
   currentTrackId: string | null;
   onSelectTrack: (track: MediaItem) => void;
   onScanClick: () => void;
-  isScanning: boolean;
   selectedArtist: string | null;
   selectedAlbum: string | null;
   onFilterArtist: (artist: string | null) => void;
@@ -73,7 +72,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   currentTrackId,
   onSelectTrack,
   onScanClick,
-  isScanning,
   selectedArtist,
   selectedAlbum,
   onFilterArtist,
@@ -718,14 +716,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <Music className="w-12 h-12 stroke-1 text-neutral-600 mb-3" />
               <p className="text-base font-medium text-neutral-300">暂无匹配的媒体文件</p>
               <p className="text-xs text-neutral-500 mt-1 max-w-sm">
-                未在当前筛选中找到曲目。您可以重置筛选，或通过顶部“重新扫描”扫描本地媒体目录。
+                未在当前筛选中找到曲目。您可以重置筛选，或在「系统配置」里添加扫描目录并重新扫描。
               </p>
               <button
                 onClick={onScanClick}
-                disabled={isScanning}
                 className="mt-4 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-medium rounded-xl transition-colors"
               >
-                {isScanning ? '正在扫描媒体库...' : '触发 API 重新扫描'}
+                打开系统配置 · 扫描目录
               </button>
             </div>
           ) : (

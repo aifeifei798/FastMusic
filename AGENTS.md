@@ -49,7 +49,7 @@ playback/library state). UI pieces live in `src/components/`.
 Server API routes (all in `server.ts`): `/api/health`, `GET|POST /api/directories`,
 `POST /api/scan`, `/api/artists`, `/api/albums`, `/api/tracks` (filter + `limit/offset`
 or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
-`/api/transcode/:id`, `/api/lyrics`.
+`/api/transcode/:id`, `/api/lyrics`, `/api/cover/:id`, `/api/cache/run|status|stop`.
 
 ## Gotchas
 
@@ -58,7 +58,7 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   entry in `metadata.json` have been removed. There is no `.env.local` and no API key is needed.
 - **Scan dirs default to empty**: `CONFIGURED_DIRS` is seeded from `MEDIA_DIRS="/a,/b"` (comma or
   semicolon separated) and then from `fastmusic_db.json`'s `dirs` array. Add real dirs via
-  `POST /api/directories` or the ServerConfigModal UI. (`bun.lock` was also dropped — npm is the
+  `POST /api/directories` or the SystemConfigModal UI (页头/页脚的「系统配置」). (`bun.lock` was also dropped — npm is the
   only toolchain; `server.sh` uses `npm install`.)
 - **查询缓存（server.ts）**：`/api/tracks` 的排序结果按 `sort:seed` 缓存（`sortCache`，最多 12 条，库增删时清空），搜索用的小写字段惰性缓存（`lowerCache`，不写进 db 文件），`.mkv` sidecar 的 stat 结果按源路径缓存（`sidecarStatCache`，`srcMtime` 变化即失效，转码完成时写入）。**任何 `MEDIA_DB` 增删必须调用 `invalidateQueryCaches()`**，否则排序/搜索会返回旧数据。实测：`sort=title` 110ms→~5ms，`ready_only=1` 90ms→~3ms。
 - **Scan is persistent + incremental** (rewritten): the library is persisted to
@@ -136,7 +136,10 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   服务端先用 `https://music.163.com/api/search/get?s=...&type=1` 找歌曲 ID，再取
   `https://music.163.com/api/song/lyric?id=...&lv=1&tv=1&rv=1`。**必须带浏览器 UA + Referer**，
   否则网易云返回空 body。搜索接口返回的 `duration` 单位是**毫秒**（打分时除以 1000）。
-  结果（含"无歌词"的负结果）缓存在内存 Map 并持久化到 `fastmusic_lyrics.json`（已 gitignore）。
+  结果（含"无歌词"的负结果）缓存在内存 Map，索引持久化到 `fastmusic_lyrics.json`（`{lyrics:{key:{found,file,fetched_at}}}`），
+  **歌词文本本身存 `lyrics/<md5(key)>.json`**（每条目一个文件，避免 30k+ 歌词把索引 JSON 撑爆内存；旧的内联文本格式在启动时自动迁移）。
+  坑：`loadLyricCache()` 不能用 `v.found && v.lyric` 判断命中（新索引里没有 `lyric` 字段），否则重启后所有命中条目会被写成 miss；
+  现在用 `Boolean(v.found) || fs.existsSync(file)` 自愈。
   解析逻辑是可复用的 `resolveLyrics(title, artist, duration)`（`lyricInFlight` 做同 key 并发去重，
   写盘防抖 `scheduleLyricSave()` 5s）；先搜 "标题 歌手"，命中（score ≥ 60）即返回，否则再只搜标题，
   瞬时网络错误重试一次。**网易云对高频请求会限流（连接被重置）**，所以 `POST /api/lyrics/prefetch`
@@ -164,6 +167,7 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   实际列宽是 `effectiveLyricWidth = max(200, min(lyricWidth, round(stageWidth * 0.26)))`（`stageWidth` = 舞台容器宽 − `lyricRightInset`），
   所以剧场模式画面窄时歌词列自动收窄，全屏时保持用户选择；面板在被封顶时显示「舞台宽度有限，歌词列自动收窄到 Npx」。
   开关是控制栏的 Captions 按钮或 `L` 键，持久在 `localStorage('fastmusic_lyrics')`（默认开启）。
+- **系统配置弹窗 = 扫描 + 全库缓存的唯一入口**（`src/components/SystemConfigModal.tsx`，原名 ServerConfigModal；页头和页脚都有「系统配置」按钮，页脚的「重新扫描」按钮已删除，重扫只在弹窗里做）。弹窗顺序：四个全库缓存任务 → 连接配置 → 扫描目录 → 策略说明。任务由服务端后台跑（`POST /api/cache/run {kind}`，`GET /api/cache/status`，`POST /api/cache/stop`），kind 是 `track_covers` / `artist_covers` / `album_covers` / `track_lyrics`；`buildJob()` 重建队列时跳过已缓存 / 已查过无结果的条目，所以重复启动只补齐新增内容。歌手/专辑任务用 `artistTargets()` / `albumTargets()`（每个歌手/专辑取一条代表曲目，优先已缓存封面的曲目）。进度字段 `done/hits/misses/errors/remaining/etaSeconds`，ETA 只统计本次真正联网的条目（`startDone`），所以不会把已缓存的条目算进速率。手动停止后 `stopped=true`，UI 显示「已停止 · 剩余 N 条」而不是「已完成」。节流：封面并发 8 + 80ms，歌词并发 3 + 200ms（env `COVER_PREFETCH_CONCURRENCY` / `COVER_PREFETCH_DELAY_MS` / `LYRIC_PREFETCH_CONCURRENCY` / `LYRIC_PREFETCH_DELAY_MS`）。工具栏的「预取封面 / 预取歌词」只处理当前已加载列表（≤200 条），全库任务在系统配置里。
 - **底部控制栏是悬浮胶囊**（`VideoJsPlayer.tsx`）: `absolute bottom-3 left-1/2 -translate-x-1/2 w-full max-w-[min(100%,900px)] rounded-xl bg-neutral-900/45 backdrop-blur-md`，
   不占布局高度。之前是整条 `bg-gradient-to-t from-neutral-950` 的 108px 近纯黑带，全屏时会被看成
   画面下方的"大黑边"。均衡器面板因此锚定在 `bottom-[104px]`（胶囊高约 84px + bottom-3）并加

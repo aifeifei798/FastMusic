@@ -7,6 +7,7 @@ fastmusic_db.json
 fastmusic_lyrics.json
 fastmusic_covers.json
 covers/
+lyrics/
 server.log
 .server.pid
 mtv_cache/
