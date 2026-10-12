@@ -1,0 +1,40 @@
+@import "tailwindcss";
+@import "video.js/dist/video-js.css";
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Custom scrollbars for playlists and lists */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* Video.js skin overrides for luxury dark aesthetic */
+.vjs-custom-theme.video-js {
+  font-family: inherit;
+  background-color: transparent;
+  /* wrapper 必须撑满 viewport: 不开 fluid 时 video.js 默认 300x150,
+     这里显式覆盖, 让画面填满播放区域 (tech 用 contain 避免裁切) */
+  width: 100%;
+  height: 100%;
+}
+
+.vjs-custom-theme .vjs-tech {
+  object-fit: contain;
+}
+
+.video-js:focus {
+  outline: none;
+}

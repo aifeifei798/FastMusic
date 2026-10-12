@@ -1,0 +1,17 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# 运行时产物 (用户数据, 不上传)
+fastmusic_db.json
+server.log
+.server.pid
+mtv_cache/
+
+# 备份 / 临时文件
+*.bak*
+*.tmp
+
+# 环境变量
+.env
+.env.local
