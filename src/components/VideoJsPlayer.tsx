@@ -212,11 +212,15 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   // 封面：/api/cover/:id 服务端三级兜底（本地内嵌 → iTunes → 网易云），字节缓存到 covers/。
   // 请求本身触发解析，加载成功才显示图片，否则保留渐变占位（黑胶底图）。
   const [coverLoaded, setCoverLoaded] = useState<boolean>(false);
+  const coverImgRef = useRef<HTMLImageElement | null>(null);
   const coverUrl = currentTrack ? mediaApi.getFullUrl(`/api/cover/${currentTrack.id}`) : '';
 
   useEffect(() => {
     setCoverLoaded(false);
-  }, [currentTrack?.id]);
+    // 浏览器缓存命中时 load 事件可能不再触发，直接查 complete 兜底
+    const el = coverImgRef.current;
+    if (el && el.complete && el.naturalWidth > 0) setCoverLoaded(true);
+  }, [currentTrack?.id, coverUrl]);
 
   useEffect(() => {
     if (!needsTranscode || !currentTrack) { setTranscode(null); return; }
@@ -1241,44 +1245,62 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             </div>
           )}
 
-          {/* 中间列: 唱片 — 外圈黑胶纹路 + 中心封面（服务端三级兜底: 本地内嵌 → iTunes → 网易云）。
-              频谱选"无"时 AudioVisualizer 不挂载, 唱片仍然在这里转。
+          {/* 中间列: 唱片 — 有封面时封面铺满整张唱片(黑胶纹路叠在上面 + 中心 spindle 孔),
+              没封面时退回黑胶纹路 + 中心标签占位。封面来自 /api/cover/:id 三级兜底
+              (本地内嵌 → iTunes → 网易云)。频谱选"无"时 AudioVisualizer 不挂载, 唱片仍然在这里转。
               两侧 hairline 让三列结构更清晰 */}
           {!isVideo && (
             <div className="self-center relative h-[62%] flex items-center justify-center">
               <span className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neutral-700/45 to-transparent" />
               <span className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neutral-700/45 to-transparent" />
               <div
-                className={`relative h-[min(100%,220px)] aspect-square rounded-full bg-neutral-950 border-4 border-neutral-800/90 shadow-2xl flex items-center justify-center p-3 ${
+                className={`relative h-[min(100%,220px)] aspect-square rounded-full bg-neutral-950 border-4 border-neutral-800/90 shadow-2xl flex items-center justify-center ${
                   isPlaying ? 'animate-[spin_14s_linear_infinite] shadow-rose-950/50' : ''
                 }`}
               >
-                {/* Vinyl grooves */}
-                <div className="w-full h-full rounded-full border border-neutral-800 flex items-center justify-center p-3.5">
-                  <div className="w-full h-full rounded-full border border-neutral-800/60 flex items-center justify-center p-4">
-                    {/* Center album artwork */}
-                    <div className="relative w-[66%] h-[66%] rounded-full overflow-hidden shadow-inner border-2 border-neutral-700 bg-neutral-900 flex items-center justify-center">
-                      {/* 没有封面时的渐变占位（与列表行的 coverGradient 风格一致） */}
-                      <div className="absolute inset-0 bg-gradient-to-tr from-rose-950 via-neutral-900 to-neutral-950 flex items-center justify-center text-rose-400 font-bold text-xl">
-                        🎵
-                      </div>
-                      {coverUrl && (
-                        <img
-                          src={coverUrl}
-                          alt={currentTrack.title}
-                          referrerPolicy="no-referrer"
-                          className={`relative w-full h-full object-cover transition-opacity duration-500 ${
-                            coverLoaded ? 'opacity-100' : 'opacity-0'
-                          }`}
-                          onLoad={() => setCoverLoaded(true)}
-                          onError={() => setCoverLoaded(false)}
-                        />
-                      )}
-                      {/* Spindle center hole */}
-                      <div className="absolute w-4 h-4 rounded-full bg-neutral-950 border-2 border-neutral-700" />
-                    </div>
+                {/* 黑胶底: 同心纹路（无封面时就是整张唱片的样子） */}
+                <span
+                  className="absolute inset-0 rounded-full pointer-events-none"
+                  style={{
+                    backgroundImage:
+                      'repeating-radial-gradient(circle at center, rgba(255,255,255,0.10) 0 1px, transparent 1px 5px)',
+                  }}
+                />
+                {/* 没有封面时的中心标签占位（与列表行的 coverGradient 风格一致） */}
+                <div className="relative w-[66%] h-[66%] rounded-full overflow-hidden shadow-inner border-2 border-neutral-700 bg-neutral-900 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-gradient-to-tr from-rose-950 via-neutral-900 to-neutral-950 flex items-center justify-center text-rose-400 font-bold text-xl">
+                    🎵
                   </div>
                 </div>
+                {/* 封面铺满整张唱片: 淡入覆盖黑胶底与标签 */}
+                {coverUrl && (
+                  <img
+                    ref={coverImgRef}
+                    src={coverUrl}
+                    alt={currentTrack.title}
+                    referrerPolicy="no-referrer"
+                    className={`absolute inset-0 w-full h-full rounded-full object-cover transition-opacity duration-500 ${
+                      coverLoaded ? 'opacity-100' : 'opacity-0'
+                    }`}
+                    onLoad={() => setCoverLoaded(true)}
+                    onError={() => setCoverLoaded(false)}
+                  />
+                )}
+                {/* 封面上叠加的黑胶纹路 + 外缘暗环, 让铺满的封面仍然像唱片 */}
+                <span
+                  className="absolute inset-0 rounded-full pointer-events-none transition-opacity duration-500"
+                  style={{
+                    backgroundImage:
+                      'repeating-radial-gradient(circle at center, rgba(0,0,0,0.55) 0 1px, transparent 1px 5px)',
+                    opacity: coverLoaded ? 0.32 : 0,
+                  }}
+                />
+                <span
+                  className="absolute inset-0 rounded-full pointer-events-none transition-opacity duration-500"
+                  style={{ boxShadow: 'inset 0 0 26px rgba(0,0,0,0.6)', opacity: coverLoaded ? 1 : 0 }}
+                />
+                {/* Spindle center hole */}
+                <span className="absolute w-6 h-6 rounded-full bg-neutral-950 border-2 border-neutral-700/70" />
               </div>
             </div>
           )}
