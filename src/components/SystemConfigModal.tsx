@@ -14,12 +14,14 @@ import {
   FileText,
   Clock,
   Pause,
-  Play
+  Play,
+  Film,
+  Loader2
 } from 'lucide-react';
 import { mediaApi } from '../services/api';
 import { t, tServerMessage } from '../utils/i18n';
 import { ScanResponse } from '../types/media';
-import { CacheJob, CacheJobKind, CacheStats } from '../types/media';
+import { CacheJob, CacheJobKind, CacheStats, TranscodeSummary } from '../types/media';
 import { SCROLLBAR_CLASSES } from '../utils/ui';
 
 interface SystemConfigModalProps {
@@ -101,6 +103,9 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
   const [stats, setStats] = useState<CacheStats | null>(null);
   const [cacheError, setCacheError] = useState<string | null>(null);
 
+  // .mkv 转码（remux）队列汇总 —— 全库统计只在这里展示，列表工具栏不再显示
+  const [transcode, setTranscode] = useState<TranscodeSummary | null>(null);
+
   // 任务从"运行中"变成"结束"时刷新列表（封面/歌词 badge 需要重新拉取）
   const runningRef = useRef<Set<CacheJobKind>>(new Set());
   const refreshRef = useRef(onRefreshData);
@@ -139,6 +144,22 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
 
     poll();
     const timer = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [isOpen]);
+
+  // 轮询 .mkv 转码汇总（5s）：后台队列在 server 启动时自动排队，这里只是只读展示
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    const poll = async () => {
+      const summary = await mediaApi.getTranscodeSummary();
+      if (!cancelled && summary) setTranscode(summary);
+    };
+    poll();
+    const timer = setInterval(poll, 5000);
     return () => {
       cancelled = true;
       clearInterval(timer);
@@ -237,7 +258,7 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                 {t('系统配置')}
               </h3>
               <p className="text-[11px] text-muted">
-                {t('全库封面与歌词缓存 · 扫描目录 · 服务端连接')}
+                {t('全库缓存任务 · 转码队列 · 扫描目录 · 服务端连接')}
               </p>
             </div>
           </div>
@@ -361,6 +382,73 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                 <AlertCircle className="w-4 h-4 shrink-0 text-accent" />
                 <span>{cacheError}</span>
               </div>
+            )}
+          </div>
+
+          {/* .mkv 转码（remux）队列状态：全库统计收进这里，列表工具栏不再显示 */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="font-medium text-ink-2 flex items-center gap-1.5">
+                <Film className="w-4 h-4 text-amber" />
+                <span>{t('转码 / Remux 状态')}</span>
+              </label>
+              {transcode && (
+                <span className="text-[11px] text-muted-2">
+                  {t('.mkv 总数 {n}', { n: fmtNum(transcode.total_mkv) })}
+                </span>
+              )}
+            </div>
+
+            <p className="text-[11px] text-muted-2 mb-3 leading-relaxed">
+              {t('Chrome 不能直接播放 .mkv，服务端把每个 .mkv 无损换容器成 sidecar（AV1/VP9 → WebM，H.264/HEVC → MP4），写在源文件旁边；sidecar 比源文件新就不再重复转码。')}
+              {t('启动时自动排队全库转码（并发 ')}
+              <code className="text-ink-3">TRANCODE_CONCURRENCY</code>
+              {t('，默认 3），')}
+              <code className="text-ink-3">PRETRANCODE_MKV=0</code>
+              {t(' 可关闭。')}
+            </p>
+
+            {transcode && transcode.total_mkv > 0 ? (
+              <div className="p-3.5 rounded-xl bg-app border border-line/80">
+                <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-emerald"
+                    style={{
+                      width: `${Math.min(100, Math.round((transcode.ready / transcode.total_mkv) * 100))}%`
+                    }}
+                  />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-2">
+                  <span className="flex items-center gap-1 text-emerald">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {t('已就绪')}
+                    <span className="font-mono text-ink-3">{fmtNum(transcode.ready)} / {fmtNum(transcode.total_mkv)}</span>
+                  </span>
+                  {transcode.running > 0 && (
+                    <span className="flex items-center gap-1 text-amber">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      {t('转码中')}
+                      <span className="font-mono text-amber">{fmtNum(transcode.running)}</span>
+                    </span>
+                  )}
+                  {(transcode.queued > 0 || transcode.pending > 0) && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      {t('排队')}
+                      <span className="font-mono">{fmtNum(transcode.queued + transcode.pending)}</span>
+                    </span>
+                  )}
+                  {transcode.error > 0 && (
+                    <span className="flex items-center gap-1 text-accent-soft">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      {t('失败')}
+                      <span className="font-mono">{fmtNum(transcode.error)}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-2">{t('没有 .mkv 文件，无需转码。')}</p>
             )}
           </div>
 

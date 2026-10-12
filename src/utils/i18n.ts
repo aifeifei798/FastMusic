@@ -293,8 +293,8 @@ const EN: Record<string, string> = {
   '扫描单目录失败': 'Failed to scan that directory',
   '缓存任务启动失败，请检查后端运行状态':
     'Could not start the cache job — check that the backend is running',
-  '全库封面与歌词缓存 · 扫描目录 · 服务端连接':
-    'Whole-library cover & lyric caches · scan directories · server connection',
+  '全库缓存任务 · 转码队列 · 扫描目录 · 服务端连接':
+    'Library cache jobs · transcode queue · scan directories · server connection',
   '全库缓存任务': 'Library cache jobs',
   '曲目 {n}': 'Tracks {n}',
   '封面 {n}': 'Covers {n}',
@@ -321,6 +321,16 @@ const EN: Record<string, string> = {
   '剩余 {n} 条 · 约 {eta}': '{n} left · about {eta}',
   '已停止 · 剩余 {n} 条': 'Stopped · {n} left',
   '已完成': 'Done',
+  '转码 / Remux 状态': 'Transcode / remux status',
+  '.mkv 总数 {n}': '{n} .mkv files in total',
+  'Chrome 不能直接播放 .mkv，服务端把每个 .mkv 无损换容器成 sidecar（AV1/VP9 → WebM，H.264/HEVC → MP4），写在源文件旁边；sidecar 比源文件新就不再重复转码。':
+    'Chrome cannot play .mkv directly, so the server losslessly remuxes each .mkv into a sidecar next to the source (AV1/VP9 → WebM, H.264/HEVC → MP4); a sidecar newer than the source is never re-transcoded.',
+  '启动时自动排队全库转码（并发 ': 'The whole library is queued for remuxing at startup (concurrency ',
+  '，默认 3），': ', default 3); ',
+  ' 可关闭。': ' disables it.',
+  '已就绪': 'Ready',
+  '失败': 'Failed',
+  '没有 .mkv 文件，无需转码。': 'No .mkv files — nothing to transcode.',
   '服务端连接配置': 'Server connection',
   '运行环境: Express + CORS': 'Runtime: Express + CORS',
   '留空为同源直连 (推荐) 或输入自定义地址如 http://localhost:3000':

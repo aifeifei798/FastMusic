@@ -110,11 +110,12 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   Client `VideoJsPlayer.tsx` uses `video/webm` for `.mkv` and polls `/api/transcode/:id` only to render
   the "排队 / 转码中 x%" badge.
 - **Library list shows per-`.mkv` remux status** in the 大小/操作 column (`✓ WEBM`/`✓ MP4` = ready,
-  amber spinner `转码 42%`, `排队`, dashed `待转码`, red `转码失败`), plus a summary chip next to the
-  MTV/音乐 toggle (`991/1233 · 3 · 239`). Server side: `/api/tracks` decorates every item with
+  amber spinner `转码 42%`, `排队`, dashed `待转码`, red `转码失败`). The whole-library summary is NOT in
+  the toolbar any more — it lives only in the 系统配置 modal («转码 / Remux 状态», `SystemConfigModal.tsx`,
+  polled every 5s while the modal is open). Server side: `/api/tracks` decorates every item with
   `transcode: TranscodeInfo` via `decorateItem()`/`transcodeInfo()` (read-only, never starts a job),
-  and `GET /api/transcode/summary` + `GET /api/transcode/status?ids=...` back the chip and the
-  10s poll in `LibraryView.tsx` (`transcodeById` state, `tracksRef` so the interval is created once).
+  and `GET /api/transcode/summary` + `GET /api/transcode/status?ids=...` back that modal section and the
+  10s per-row poll in `LibraryView.tsx` (`transcodeById` state, `tracksRef` so the interval is created once).
   Transient ffmpeg failures (killed process, deleted tmp) are retried up to 2× by
   `markTranscodeError()` before a job is marked `error`.
   A "只看已转码" toggle next to the MTV/音乐 switch sends `ready_only=1` to `/api/tracks` (server drops
@@ -167,7 +168,7 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   实际列宽是 `effectiveLyricWidth = max(200, min(lyricWidth, round(stageWidth * 0.26)))`（`stageWidth` = 舞台容器宽 − `lyricRightInset`），
   所以剧场模式画面窄时歌词列自动收窄，全屏时保持用户选择；面板在被封顶时显示「舞台宽度有限，歌词列自动收窄到 Npx」。
   开关是控制栏的 Captions 按钮或 `L` 键，持久在 `localStorage('fastmusic_lyrics')`（默认开启）。
-- **系统配置弹窗 = 扫描 + 全库缓存的唯一入口**（`src/components/SystemConfigModal.tsx`，原名 ServerConfigModal；页头和页脚都有「系统配置」按钮，页脚的「重新扫描」按钮已删除，重扫只在弹窗里做）。弹窗顺序：四个全库缓存任务 → 连接配置 → 扫描目录 → 策略说明。任务由服务端后台跑（`POST /api/cache/run {kind}`，`GET /api/cache/status`，`POST /api/cache/stop`），kind 是 `track_covers` / `artist_covers` / `album_covers` / `track_lyrics`；`buildJob()` 重建队列时跳过已缓存 / 已查过无结果的条目，所以重复启动只补齐新增内容。歌手/专辑任务用 `artistTargets()` / `albumTargets()`（每个歌手/专辑取一条代表曲目，优先已缓存封面的曲目）。进度字段 `done/hits/misses/errors/remaining/etaSeconds`，ETA 只统计本次真正联网的条目（`startDone`），所以不会把已缓存的条目算进速率。手动停止后 `stopped=true`，UI 显示「已停止 · 剩余 N 条」而不是「已完成」。节流：封面并发 8 + 80ms，歌词并发 3 + 200ms（env `COVER_PREFETCH_CONCURRENCY` / `COVER_PREFETCH_DELAY_MS` / `LYRIC_PREFETCH_CONCURRENCY` / `LYRIC_PREFETCH_DELAY_MS`）。工具栏的「预取封面 / 预取歌词」只处理当前已加载列表（≤200 条），全库任务在系统配置里。
+- **系统配置弹窗 = 扫描 + 全库缓存的唯一入口**（`src/components/SystemConfigModal.tsx`，原名 ServerConfigModal；页头和页脚都有「系统配置」按钮，页脚的「重新扫描」按钮已删除，重扫只在弹窗里做）。弹窗顺序：四个全库缓存任务 → 转码 / Remux 状态（全库 .mkv 汇总，5s 轮询 `/api/transcode/summary`，列表工具栏不再显示） → 连接配置 → 扫描目录 → 策略说明。任务由服务端后台跑（`POST /api/cache/run {kind}`，`GET /api/cache/status`，`POST /api/cache/stop`），kind 是 `track_covers` / `artist_covers` / `album_covers` / `track_lyrics`；`buildJob()` 重建队列时跳过已缓存 / 已查过无结果的条目，所以重复启动只补齐新增内容。歌手/专辑任务用 `artistTargets()` / `albumTargets()`（每个歌手/专辑取一条代表曲目，优先已缓存封面的曲目）。进度字段 `done/hits/misses/errors/remaining/etaSeconds`，ETA 只统计本次真正联网的条目（`startDone`），所以不会把已缓存的条目算进速率。手动停止后 `stopped=true`，UI 显示「已停止 · 剩余 N 条」而不是「已完成」。节流：封面并发 8 + 80ms，歌词并发 3 + 200ms（env `COVER_PREFETCH_CONCURRENCY` / `COVER_PREFETCH_DELAY_MS` / `LYRIC_PREFETCH_CONCURRENCY` / `LYRIC_PREFETCH_DELAY_MS`）。工具栏的「预取封面 / 预取歌词」只处理当前已加载列表（≤200 条），全库任务在系统配置里。
 - **底部控制栏是悬浮胶囊**（`VideoJsPlayer.tsx`）: `absolute bottom-3 left-1/2 -translate-x-1/2 w-full max-w-[min(100%,900px)] rounded-xl bg-neutral-900/45 backdrop-blur-md`，
   不占布局高度。之前是整条 `bg-gradient-to-t from-neutral-950` 的 108px 近纯黑带，全屏时会被看成
   画面下方的"大黑边"。均衡器面板因此锚定在 `bottom-[104px]`（胶囊高约 84px + bottom-3）并加

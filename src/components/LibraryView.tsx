@@ -21,7 +21,7 @@ import {
   Captions,
   ChevronDown
 } from 'lucide-react';
-import { MediaItem, ArtistSummary, AlbumSummary, TranscodeInfo, TranscodeSummary, TrackSort } from '../types/media';
+import { MediaItem, ArtistSummary, AlbumSummary, TranscodeInfo, TrackSort } from '../types/media';
 import { mediaApi } from '../services/api';
 import { SCROLLBAR_CLASSES, NO_SCROLLBAR_CLASSES } from '../utils/ui';
 import { currentTheme, coverGradient as themeCoverGradient } from '../utils/theme';
@@ -151,7 +151,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const tracksRef = useRef<MediaItem[]>(tracks);
   tracksRef.current = tracks;
   const [transcodeById, setTranscodeById] = useState<Record<string, TranscodeInfo>>({});
-  const [transcodeSummary, setTranscodeSummary] = useState<TranscodeSummary | null>(null);
 
   // 封面预取：服务端只在封面已解析/缓存时给出 cover_url，所以列表不会随手联网。
   // "预取封面"按钮批量解析当前已加载的条目（服务端并发 8，最多 200 条），
@@ -220,14 +219,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     };
   }, [toolMenuOpen]);
 
+  // 只轮询当前列表里 .mkv 的转码状态（行内徽章）。全库统计条已移到「系统配置」弹窗，
+  // 工具栏不再显示转码汇总。
   useEffect(() => {
     const refresh = async () => {
       const ids = tracksRef.current.filter((t) => t.ext === '.mkv').map((t) => t.id);
-      const [summary, batch] = await Promise.all([
-        mediaApi.getTranscodeSummary(),
-        mediaApi.getTranscodeStatusBatch(ids),
-      ]);
-      if (summary) setTranscodeSummary(summary);
+      const batch = await mediaApi.getTranscodeStatusBatch(ids);
       if (Object.keys(batch).length > 0) {
         setTranscodeById((prev) => ({ ...prev, ...batch }));
       }
@@ -631,32 +628,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </div>
             )}
           </div>
-
-
-          {/* .mkv 换容器(remux)进度统计：已就绪 / 进行中 / 排队 */}
-          {transcodeSummary && transcodeSummary.total_mkv > 0 && (
-            <div
-              title={t('全库 {total} 个 .mkv：已转码 {ready}，转码中 {running}，排队 {queued}', { total: transcodeSummary.total_mkv, ready: transcodeSummary.ready, running: transcodeSummary.running, queued: transcodeSummary.queued }) + (transcodeSummary.pending ? t('，未入队 {n}', { n: transcodeSummary.pending }) : '') + (transcodeSummary.error ? t('，失败 {n}', { n: transcodeSummary.error }) : '')}
-              className="flex items-center gap-2 shrink-0 text-[11px] font-medium text-muted"
-            >
-              <span className="flex items-center gap-1 text-emerald">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                {transcodeSummary.ready}/{transcodeSummary.total_mkv}
-              </span>
-              {transcodeSummary.running > 0 && (
-                <span className="flex items-center gap-1 text-amber">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  {transcodeSummary.running}
-                </span>
-              )}
-              {(transcodeSummary.queued > 0 || transcodeSummary.pending > 0) && (
-                <span className="flex items-center gap-1 text-muted-2">
-                  <Clock className="w-3.5 h-3.5" />
-                  {transcodeSummary.queued + transcodeSummary.pending}
-                </span>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
