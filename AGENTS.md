@@ -118,8 +118,13 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   `https://music.163.com/api/song/lyric?id=...&lv=1&tv=1&rv=1`。**必须带浏览器 UA + Referer**，
   否则网易云返回空 body。搜索接口返回的 `duration` 单位是**毫秒**（打分时除以 1000）。
   结果（含"无歌词"的负结果）缓存在内存 Map 并持久化到 `fastmusic_lyrics.json`（已 gitignore）。
-  客户端 `VideoJsPlayer.tsx`：`parseLrc` 解析 LRC（一行多个时间戳展开），把 `tlyric` 翻译并入同一时间轴，
-  过滤 作词/作曲/原唱/【…】 这类 credits 行；高亮行 = 时间戳 <= `currentTime` 的最后一条。
+  客户端 `VideoJsPlayer.tsx`：`parseLrc` 解析 LRC（一行多个时间戳展开），过滤 作词/作曲/原唱/【…】 这类 credits 行；
+  播放区域是**三列网格舞台**（`grid-cols-[1fr_240px_1fr]` + `gridTemplateRows:1fr`，列/行必须 `min-w-0 min-h-0`
+  否则 grid 的 1fr 会被内容撑高到整篇歌词高度）：左列右对齐 = 歌名/歌手/专辑，中间 240px 留空给唱片
+  （两侧 hairline 分隔），右列 = 歌词竖列。当前行始终居中：`lyricBoxRef` 是 `relative`，effect 用
+  `el.offsetTop - box.clientHeight/2 + el.offsetHeight/2` 算出 `lyricOffset`，内层 div `translateY(-offset)`
+  （offset 可为负，前奏时列表需下移），上下行按距离淡出，窗口上下边缘用 CSS `mask-image` 渐隐
+  （`.lyric-window` / `.lyric-active` 在 `src/index.css`，歌词用 Noto Serif CJK SC 衬线体）。
   开关是控制栏的 Captions 按钮或 `L` 键，持久在 `localStorage('fastmusic_lyrics')`（默认开启）。
 - **video.js copies the `<video>` element's className into its auto-created wrapper div at init, and the
   wrapper's classes never change afterwards.** `VideoJsPlayer.tsx` must keep the `<video>` classes STATIC

@@ -61,7 +61,6 @@ const EQ_PRESET_BY_NAME: Record<string, number[]> = EQ_PRESETS.reduce(
 interface LyricLine {
   time: number;
   text: string;
-  isTranslation?: boolean;
 }
 
 // 作词/作曲/编曲/原唱这类元数据行不是歌词, 过滤掉, 否则开头滚动全是 credits
@@ -90,12 +89,21 @@ function parseLrc(raw: string): LyricLine[] {
   return out;
 }
 
-// 把翻译行并入主歌词时间轴（同一时刻主歌词先显示）
-function mergeLyrics(main: LyricLine[], translation: LyricLine[]): LyricLine[] {
-  if (!translation.length) return main;
-  const merged = [...main, ...translation.map((l) => ({ ...l, isTranslation: true }))];
-  merged.sort((a, b) => a.time - b.time || (a.isTranslation ? 1 : 0) - (b.isTranslation ? 1 : 0));
-  return merged;
+// 翻译行按时间戳索引, 主歌词行渲染时查表并入 (同一时刻主句在上, 译文小字在下)
+function buildTranslationMap(translation: LyricLine[]): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const line of translation) {
+    const key = Math.round(line.time * 10);
+    const prev = map.get(key);
+    map.set(key, prev ? `${prev} / ${line.text}` : line.text);
+  }
+  return map;
+}
+
+// 时间戳容差 ±0.1s: 网易云主句与译文的时间戳常有微小差异
+function findTranslation(map: Map<number, string>, time: number): string {
+  const key = Math.round(time * 10);
+  return map.get(key) || map.get(key - 1) || map.get(key + 1) || '';
 }
 
 interface VideoJsPlayerProps {
@@ -242,9 +250,13 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     }
   });
   const [lyricLines, setLyricLines] = useState<LyricLine[]>([]);
+  const [lyricTranslations, setLyricTranslations] = useState<Map<number, string>>(new Map());
   // idle=未请求, loading=取歌词中, found=有歌词, none=网易云没有该曲歌词
   const [lyricStatus, setLyricStatus] = useState<'idle' | 'loading' | 'found' | 'none'>('idle');
   const [lyricMatch, setLyricMatch] = useState<{ title: string; artist: string; id?: number } | null>(null);
+  // 歌词竖列: 把当前行平移到窗口垂直中心 (translateY), 上下行淡出
+  const lyricBoxRef = useRef<HTMLDivElement | null>(null);
+  const [lyricOffset, setLyricOffset] = useState(0);
 
   useEffect(() => {
     if (!currentTrack) {
@@ -257,6 +269,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
     let cancelled = false;
     setLyricLines([]);
+    setLyricTranslations(new Map());
     setLyricMatch(null);
     setLyricStatus('loading');
 
@@ -265,9 +278,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       .then((r) => {
         if (cancelled) return;
         if (r && r.found && r.lyric) {
-          const merged = mergeLyrics(parseLrc(r.lyric), parseLrc(r.tlyric || ''));
-          if (merged.length) {
-            setLyricLines(merged);
+          const main = parseLrc(r.lyric);
+          if (main.length) {
+            setLyricLines(main);
+            setLyricTranslations(buildTranslationMap(parseLrc(r.tlyric || '')));
             setLyricMatch({
               title: r.matched_title || currentTrack.title,
               artist: r.matched_artist || currentTrack.artist,
@@ -286,6 +300,22 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       cancelled = true;
     };
   }, [currentTrack, showLyrics]);
+
+  // 歌词滚动: 当前行始终居中。box 是 relative, 所以 el.offsetTop 就是行在窗口内的位置。
+  useEffect(() => {
+    const box = lyricBoxRef.current;
+    if (!box || !lyricLines.length) return;
+    let idx = -1;
+    for (let i = 0; i < lyricLines.length; i++) {
+      if (lyricLines[i].time <= currentTime + 0.05) idx = i;
+      else break;
+    }
+    const target = idx < 0 ? 0 : idx;
+    const el = box.querySelector(`[data-lyric-idx="${target}"]`) as HTMLElement | null;
+    if (!el) return;
+    // 可为负: 前奏/第一句时列表需要向下平移
+    setLyricOffset(el.offsetTop - box.clientHeight / 2 + el.offsetHeight / 2);
+  }, [currentTime, lyricLines, lyricStatus, showLyrics]);
 
   const toggleLyrics = () => {
     // 函数式更新: 键盘快捷键的 handler 闭包可能持有旧 toggleLyrics,
@@ -831,6 +861,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     if (lyricLines[i].time <= currentTime + 0.05) activeLyricIndex = i;
     else break;
   }
+  // 前奏阶段(还没到第一句)也把第一句居中, 只是不"高亮"
+  const lyricIdx = activeLyricIndex < 0 ? 0 : activeLyricIndex;
 
 
   return (
@@ -1044,59 +1076,89 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         )}
       </div>
 
-      {/* 歌词面板 — 网易云 LRC 时间同步高亮。pointer-events-none: 不干扰点击播放/控制栏 */}
-      {showLyrics && (
+      {/* 舞台布局 — 三列网格: 左 = 歌名/歌手(右对齐贴近唱片), 中 = 唱片留空区(两侧细线), 右 = 歌词竖列。
+          中间列固定宽度且居中，所以唱片不会被文字压住；pointer-events-none 不干扰点击播放/控制栏 */}
+      {currentTrack && (
         <div
-          className="absolute left-1/2 bottom-20 z-[15] -translate-x-1/2 w-[min(620px,88%)] pointer-events-none"
+          className="absolute inset-0 z-[15] pointer-events-none grid grid-cols-[1fr_240px_1fr] gap-4 px-5 sm:px-7"
+          style={{ gridTemplateRows: '1fr' }}
           title={
             lyricMatch
               ? `歌词来源: 网易云 · ${lyricMatch.title} - ${lyricMatch.artist}`
-              : '歌词来源: 网易云'
+              : ''
           }
         >
-          <div className="rounded-xl bg-black/45 backdrop-blur-sm border border-neutral-800/50 px-4 py-3 flex flex-col gap-1 max-h-[52%] overflow-hidden shadow-lg">
-            {lyricStatus === 'loading' && (
-              <div className="flex items-center gap-2 text-xs text-neutral-400">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                正在从网易云获取歌词…
-              </div>
-            )}
-
-            {lyricStatus === 'none' && (
-              <div className="flex items-center gap-2 text-xs text-neutral-500">
-                <Captions className="w-3.5 h-3.5" />
-                <span>网易云未找到「{currentTrack?.title || '该曲目'}」的歌词</span>
-              </div>
-            )}
-
-            {lyricStatus === 'found' && (
-              <div className="flex flex-col gap-1">
-                {(() => {
-                  const start = Math.max(0, activeLyricIndex - 2);
-                  const end = Math.min(lyricLines.length, activeLyricIndex + 4);
-                  return lyricLines.slice(start, end).map((line, offset) => {
-                    const i = start + offset;
-                    const isActive = i === activeLyricIndex;
-                    return (
-                      <p
-                        key={`${line.time}-${i}`}
-                        className={`leading-snug transition-all duration-300 ${
-                          line.isTranslation
-                            ? `text-[11px] text-neutral-500 ${isActive ? 'opacity-90' : 'opacity-50'}`
-                            : isActive
-                              ? 'text-white text-base sm:text-lg font-semibold'
-                              : 'text-neutral-500 text-sm'
-                        }`}
-                      >
-                        {line.text}
-                      </p>
-                    );
-                  });
-                })()}
-                <span className="text-[10px] text-neutral-600 mt-1">歌词来源 · 网易云</span>
-              </div>
+          {/* 左列: 正在播放的曲目信息 (min-h-0 让 grid 的 1fr 行不被内容撑高) */}
+          <div
+            className={`min-w-0 min-h-0 flex flex-col justify-center gap-1.5 text-right pr-3 ${
+              isVideo ? 'rounded-xl bg-black/45 backdrop-blur-sm border border-white/10 px-4 py-3' : ''
+            }`}
+          >
+            <span className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">正在播放</span>
+            <h2 className="text-lg sm:text-xl font-bold leading-tight text-neutral-100 break-words drop-shadow-md">
+              {currentTrack.title}
+            </h2>
+            <p className="text-sm font-medium text-rose-400">{currentTrack.artist || '未知歌手'}</p>
+            {currentTrack.album && (
+              <p className="text-[11px] leading-snug text-neutral-500 break-words">{currentTrack.album}</p>
             )}
           </div>
+
+          {/* 中间列: 唱片留空区，两侧 hairline 让三列结构更清晰 */}
+          <div className="self-center relative h-[62%]">
+            <span className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neutral-700/45 to-transparent" />
+            <span className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neutral-700/45 to-transparent" />
+          </div>
+
+          {/* 右列: 歌词竖列 (当前行居中高亮, 上下行淡出) */}
+          {showLyrics && (
+            <div className="min-w-0 min-h-0 h-full flex flex-col justify-center gap-2 pl-3">
+              {lyricStatus === 'loading' && (
+                <div className="flex items-center gap-2 text-xs text-neutral-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>正在从网易云获取歌词…</span>
+                </div>
+              )}
+
+              {lyricStatus === 'none' && (
+                <div className="flex items-center gap-2 text-xs text-neutral-500">
+                  <Captions className="w-3.5 h-3.5" />
+                  <span>网易云未找到「{currentTrack.title}」的歌词</span>
+                </div>
+              )}
+
+              {lyricStatus === 'found' && (
+                <>
+                  <div ref={lyricBoxRef} className="relative flex-1 min-h-0 overflow-hidden lyric-window">
+                    <div
+                      className="flex flex-col gap-2 transition-transform duration-500 ease-out"
+                      style={{ transform: `translateY(${-lyricOffset}px)` }}
+                    >
+                      {lyricLines.map((line, i) => {
+                        const d = i - lyricIdx;
+                        const trans = d === 0 ? findTranslation(lyricTranslations, line.time) : '';
+                        return (
+                          <p
+                            key={i}
+                            data-lyric-idx={i}
+                            className={`lyric-line ${d === 0 ? 'lyric-active' : d < 0 ? 'lyric-past' : 'lyric-next'}`}
+                          >
+                            {line.text}
+                            {trans && (
+                              <span className="mt-0.5 block text-[11px] leading-snug italic text-neutral-500">
+                                {trans}
+                              </span>
+                            )}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-neutral-600 text-right">歌词 · 网易云</span>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 

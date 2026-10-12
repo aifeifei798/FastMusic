@@ -382,17 +382,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
           </div>
         </div>
 
-        {/* Track Title and Artist */}
-        <div className="mt-5 max-w-md px-4">
-          <h2 className="text-xl sm:text-2xl font-bold text-neutral-100 tracking-tight truncate drop-shadow-md">
-            {title}
-          </h2>
-          <div className="flex items-center justify-center gap-2 mt-1.5 text-xs sm:text-sm text-neutral-400">
-            <span className="font-medium text-rose-400">{artist}</span>
-            <span aria-hidden="true" className="text-neutral-600">·</span>
-            <span className="truncate">{album}</span>
-          </div>
-        </div>
+        {/* 歌名/歌手由 VideoJsPlayer 的左侧信息列渲染, 这里只保留唱片本身,
+           让唱片在舞台中央留出左右两列(左: 曲目信息, 右: 歌词) */}
       </div>
     </div>
   );

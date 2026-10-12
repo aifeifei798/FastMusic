@@ -21,7 +21,39 @@ body {
   background: rgba(255, 255, 255, 0.28);
 }
 
-/* Video.js skin overrides for luxury dark aesthetic */
+/* 歌词竖列: 当前行居中, 上下行淡出, 窗口上下边缘渐隐 */
+.lyric-window {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 26%, #000 74%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 26%, #000 74%, transparent 100%);
+}
+
+.lyric-line {
+  font-family: 'Noto Serif CJK SC', 'Noto Serif', Georgia, serif;
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.34);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  transition: color 300ms ease, opacity 300ms ease;
+}
+
+.lyric-past {
+  opacity: 0.5;
+}
+
+.lyric-next {
+  opacity: 0.85;
+}
+
+.lyric-active {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  padding-left: 10px;
+  border-left: 2px solid rgba(244, 63, 94, 0.55);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6), 0 0 22px rgba(244, 63, 94, 0.2);
+}
+
 .vjs-custom-theme.video-js {
   font-family: inherit;
   background-color: transparent;
