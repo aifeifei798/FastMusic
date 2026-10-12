@@ -56,6 +56,10 @@ export default function App() {
   const [selectedAlbum, setSelectedAlbum] = useState<string | null>(null);
   const [mediaTypeFilter, setMediaTypeFilter] = useState<'all' | 'audio' | 'video'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  // 只看"已转码/可直接播"的 .mkv（排队/转码中的隐藏）。持久化到 localStorage。
+  const [readyOnly, setReadyOnly] = useState<boolean>(() => {
+    try { return localStorage.getItem('fastmusic_ready_only') === '1'; } catch { return false; }
+  });
 
   // Player state
   const [queue, setQueue] = useState<MediaItem[]>([]);
@@ -86,6 +90,7 @@ export default function App() {
           album: selectedAlbum || undefined,
           media_type: mediaTypeFilter === 'all' ? undefined : mediaTypeFilter,
           search: searchQuery.trim() || undefined,
+          ready_only: readyOnly || undefined,
           limit: 30,
           offset: 0,
         }),
@@ -107,7 +112,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, queue.length]);
+  }, [selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly, queue.length]);
 
   // Load More Tracks on scroll near bottom (limit=30, offset=currentLength)
   const handleLoadMore = useCallback(async () => {
@@ -119,6 +124,7 @@ export default function App() {
         album: selectedAlbum || undefined,
         media_type: mediaTypeFilter === 'all' ? undefined : mediaTypeFilter,
         search: searchQuery.trim() || undefined,
+        ready_only: readyOnly || undefined,
         limit: 30,
         offset: tracks.length,
       });
@@ -131,7 +137,16 @@ export default function App() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMore, selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, tracks.length]);
+  }, [isLoadingMore, hasMore, selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly, tracks.length]);
+
+  // 「只看已转码」开关：持久化，切换后 loadData 依赖 readyOnly 会自动重新拉取
+  const handleToggleReadyOnly = useCallback(() => {
+    setReadyOnly((prev) => {
+      const next = !prev;
+      try { localStorage.setItem('fastmusic_ready_only', next ? '1' : '0'); } catch {}
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -660,6 +675,8 @@ export default function App() {
             onFilterAlbum={setSelectedAlbum}
             mediaTypeFilter={mediaTypeFilter}
             onFilterMediaType={setMediaTypeFilter}
+            readyOnly={readyOnly}
+            onToggleReadyOnly={handleToggleReadyOnly}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             onStartRadio={() => startRadioMode('all')}

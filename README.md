@@ -76,7 +76,7 @@ src/
 | `POST /api/scan` | 增量扫描;`?force=1` 清空并全量重扫 |
 | `GET /api/artists` | 歌手列表(含封面) |
 | `GET /api/albums` | 专辑列表 |
-| `GET /api/tracks` | 曲目列表,支持过滤 + `limit/offset` 或 `page/page_size` |
+| `GET /api/tracks` | 曲目列表,支持过滤 + `limit/offset` 或 `page/page_size`;`ready_only=1` 只返回可直接播的条目(非 `.mkv` 或 sidecar 已就绪) |
 | `GET /api/radio` | 随心电台 |
 | `GET /api/tracks/:id` | 曲目详情 |
 | `GET /api/stream/:id` | 流式播放(206 Range;`.mkv` 自动 remux/转码) |

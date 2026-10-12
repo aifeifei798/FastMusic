@@ -126,6 +126,7 @@ export class MediaApiService {
     search?: string;
     limit?: number;
     offset?: number;
+    ready_only?: boolean;
   }): Promise<PaginatedTracksResponse> {
     const limit = filters?.limit ?? 30;
     const offset = filters?.offset ?? 0;
@@ -137,6 +138,7 @@ export class MediaApiService {
       if (filters?.album) url.searchParams.append('album', filters.album);
       if (filters?.media_type) url.searchParams.append('media_type', filters.media_type);
       if (filters?.search) url.searchParams.append('search', filters.search);
+      if (filters?.ready_only) url.searchParams.append('ready_only', '1');
       url.searchParams.append('limit', String(limit));
       url.searchParams.append('offset', String(offset));
 

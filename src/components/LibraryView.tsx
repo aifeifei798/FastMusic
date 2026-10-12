@@ -41,6 +41,8 @@ interface LibraryViewProps {
   onFilterAlbum: (album: string | null) => void;
   mediaTypeFilter: 'all' | 'audio' | 'video';
   onFilterMediaType: (type: 'all' | 'audio' | 'video') => void;
+  readyOnly?: boolean;
+  onToggleReadyOnly?: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onStartRadio?: () => void;
@@ -70,6 +72,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onFilterAlbum,
   mediaTypeFilter,
   onFilterMediaType,
+  readyOnly = false,
+  onToggleReadyOnly,
   searchQuery,
   onSearchChange,
   onStartRadio,
@@ -339,6 +343,22 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               音乐
             </button>
           </div>
+
+          {/* 只看已转码：隐藏排队/转码中的 .mkv，只留下可直接播的条目 */}
+          {onToggleReadyOnly && (
+            <button
+              onClick={onToggleReadyOnly}
+              title="只显示已转码(或无需转码)的曲目；排队中和转码中的 .mkv 会被隐藏"
+              className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 shrink-0 ${
+                readyOnly
+                  ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700/60'
+                  : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>只看已转码</span>
+            </button>
+          )}
 
           {/* .mkv 换容器(remux)进度统计：已就绪 / 进行中 / 排队 */}
           {transcodeSummary && transcodeSummary.total_mkv > 0 && (

@@ -979,6 +979,8 @@ app.get('/api/tracks', (req: Request, res: Response) => {
   const album = req.query.album as string | undefined;
   const media_type = req.query.media_type as string | undefined;
   const search = (req.query.search as string | undefined)?.toLowerCase();
+  // ready_only=1: 只返回"立刻可播"的条目（非 .mkv，或 .mkv 的 sidecar 已就绪）
+  const readyOnly = req.query.ready_only === '1' || req.query.ready_only === 'true';
   
   // limit / offset 分页参数
   const limitQuery = req.query.limit !== undefined ? parseInt(req.query.limit as string, 10) : undefined;
@@ -994,6 +996,10 @@ app.get('/api/tracks', (req: Request, res: Response) => {
     if (media_type && item.media_type !== media_type) continue;
     if (search && !item.title.toLowerCase().includes(search) && !item.artist.toLowerCase().includes(search)) {
       continue;
+    }
+    if (readyOnly) {
+      const info = transcodeInfo(item);
+      if (info && info.status !== 'ready') continue;
     }
     results.push(item);
   }

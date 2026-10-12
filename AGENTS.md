@@ -115,6 +115,10 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   10s poll in `LibraryView.tsx` (`transcodeById` state, `tracksRef` so the interval is created once).
   Transient ffmpeg failures (killed process, deleted tmp) are retried up to 2× by
   `markTranscodeError()` before a job is marked `error`.
+  A "只看已转码" toggle next to the MTV/音乐 switch sends `ready_only=1` to `/api/tracks` (server drops
+  `.mkv` whose sidecar is not ready yet); it persists in `localStorage('fastmusic_ready_only')` and is
+  part of `loadData`/`handleLoadMore` deps. It only affects the tracks list — the favorites tab is
+  client-side and is not filtered.
   Note: music-metadata does NOT parse Matroska, so `parseMediaFileMetadata` falls back to
   `probeMediaWithFfprobe()` (async ffprobe `format=duration`) for any file where it gave
   nothing — otherwise all 1233 `.mkv` items had `duration: undefined` and the progress bar was garbage.
