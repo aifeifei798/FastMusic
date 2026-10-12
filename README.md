@@ -127,13 +127,22 @@ src/
 
 ## 🔖 品牌资源
 
-- `public/logo.svg` — 完整 lockup(徽标 + **白色** wordmark),透明背景,用于深色页面。
-- `public/logo-dark.svg` — 完整 lockup(徽标 + **深色** wordmark `#0b0b12`),透明背景,用于浅色页面。
-- `public/logo-mark.svg` — 徽标本体:渐变圆角方(rose → amber) + 黑胶唱片同心纹路 + 白色闪电(“快”)。
-- `public/favicon.svg` — 16px 优化版(去掉内圈纹路,闪电加粗)。
-- `public/logo-mark-mono.svg` — 单色版(`currentColor`),深浅背景通用。
-- `docs/logo.png` (640×160) / `docs/logo-light.png` (640×160) — 深色卡片 / 浅色卡片横幅,README 顶部与 `og:image` 使用。
-- `docs/logo-dark.png` (452×128) / `docs/logo-mark.png` (256×256) — 位图导出(透明背景)。
+徽标几何: 圆角方 + 黑胶唱片同心纹路 + 闪电(“快”), 深浅主题共用同一几何, 只换配色。
+
+| 文件 | 用途 |
+|---|---|
+| `public/logo.svg` | 深色页面 lockup: 渐变徽标(rose → amber) + **白色** wordmark, 透明背景 |
+| `public/logo-dark.svg` | 浅色页面 lockup: 渐变徽标 + **深色** wordmark `#0b0b12`, 透明背景 |
+| `public/logo-light.svg` | **浅色主题 / Apple 风** lockup: 近黑徽标 `#1d1d1f`(无渐变) + 近黑 wordmark(Inter / SF Pro 字体栈), 透明背景 |
+| `public/logo-mark.svg` | 徽标本体: 渐变圆角方 + 黑胶同心纹路 + 白色闪电 |
+| `public/logo-mark-light.svg` | 浅色主题徽标: 近黑圆角方 + 极淡黑胶纹路 + 白色闪电 |
+| `public/logo-mark-line.svg` | 线条版徽标(`currentColor`): 细圆环 + 实心闪电, 小图标 / 单色印刷通用 |
+| `public/logo-mark-mono.svg` | 单色版(`currentColor`): 粗圆环 + 实心闪电, 深浅背景通用 |
+| `public/favicon.svg` | 16px 优化版(去掉内圈纹路, 闪电加粗) |
+| `docs/logo.png` (640×160) | 深色卡片横幅, README 顶部与 `og:image` |
+| `docs/logo-light.png` (640×160) | 浅色卡片横幅(白底 + 近黑文字 + 灰色副标题) |
+| `docs/logo-dark.png` (452×128) / `docs/logo-light-lockup.png` (432×128) / `docs/logo-mark-light.png` (256×256) / `docs/logo-mark.png` (256×256) | 位图导出(透明背景) |
+
 - 页头 / 页脚的徽标是内联 SVG(`src/components/Logo.tsx`),几何与 `public/logo-mark.svg` 一致;改形状时两边要同步。
 
 ## 📄 许可

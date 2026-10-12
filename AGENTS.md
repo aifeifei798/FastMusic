@@ -182,7 +182,7 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   （隐藏时 `cursor-none`，否则 `cursor-pointer`），否则 `cursor-pointer` 会覆盖继承的 none。
   控制栏可见时恢复 `cursor-pointer`（方便点击按钮）。实测（CDP 计算样式）：根容器/视口/wrapper/
   `<video>`/胶囊/歌词列的 computed cursor 都是 `none`。
-- **品牌徽标（Logo）**: 页头/页脚的徽标是内联 SVG 组件 `src/components/Logo.tsx`（渐变圆角方 + 黑胶同心纹路 + 白色闪电），几何与 `public/logo-mark.svg`、`public/favicon.svg`（16px 简化版：无内圈纹路、闪电加粗）一致 —— 改形状时三处要同步。`public/` 是 Vite 默认静态目录（dev 直接 served，build 后拷进 `dist/`），`/favicon.svg`、`/logo.svg`（白色文字 lockup，深色页面用）、`/logo-dark.svg`（深色文字 lockup，浅色页面用）、`/logo-mark-mono.svg`（`currentColor` 单色版）都可直接访问；`index.html` 的 `<link rel="icon">` 与 `og:image` 指向它们 / `docs/logo.png`（另有 `docs/logo-light.png`、`docs/logo-dark.png` 位图导出）。
+- **品牌徽标（Logo）**: 页头/页脚的徽标是内联 SVG 组件 `src/components/Logo.tsx`（渐变圆角方 + 黑胶同心纹路 + 白色闪电），几何与 `public/logo-mark.svg`、`public/favicon.svg`（16px 简化版：无内圈纹路、闪电加粗）一致 —— 改形状时三处要同步。`public/` 是 Vite 默认静态目录（dev 直接 served，build 后拷进 `dist/`），`/favicon.svg`、`/logo.svg`（白色文字 lockup，深色页面用）、`/logo-dark.svg`（深色文字 lockup，浅色页面用）、`/logo-light.svg`（Apple 风浅色主题 lockup：近黑徽标 `#1d1d1f` + 近黑 wordmark，无渐变）、`/logo-mark-light.svg`、`/logo-mark-mono.svg` / `/logo-mark-line.svg`（`currentColor` 单色 / 线条版）都可直接访问；`index.html` 的 `<link rel="icon">` 与 `og:image` 指向它们 / `docs/logo.png`（另有 `docs/logo-light.png`、`docs/logo-dark.png`、`docs/logo-light-lockup.png`、`docs/logo-mark-light.png` 位图导出）。
 - **样式全部用 Tailwind utility 类**: `src/index.css` 只有两个 `@import`（tailwindcss + video.js 官方 CSS），
   没有手写规则。滚动条用 arbitrary variant 挂在每个滚动容器上（共享常量 `SCROLLBAR_CLASSES` /
   `NO_SCROLLBAR_CLASSES` 在 `src/utils/ui.ts`，因为 `::-webkit-scrollbar` 伪元素不能从祖先继承）。
