@@ -224,51 +224,51 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="w-full max-w-2xl bg-surface border border-line rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800 bg-neutral-900/90 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-line bg-surface/90 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500">
+            <div className="w-8 h-8 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
               <Server className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-semibold text-neutral-100 text-sm sm:text-base">
+              <h3 className="font-semibold text-ink text-sm sm:text-base">
                 系统配置
               </h3>
-              <p className="text-[11px] text-neutral-400">
+              <p className="text-[11px] text-muted">
                 全库封面与歌词缓存 · 扫描目录 · 服务端连接
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+            className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-surface-2 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className={`p-6 space-y-6 overflow-y-auto text-xs text-neutral-300 ${SCROLLBAR_CLASSES}`}>
+        <div className={`p-6 space-y-6 overflow-y-auto text-xs text-ink-3 ${SCROLLBAR_CLASSES}`}>
           {/* 全库缓存任务 */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="font-medium text-neutral-200 flex items-center gap-1.5">
-                <Disc3 className="w-4 h-4 text-rose-400" />
+              <label className="font-medium text-ink-2 flex items-center gap-1.5">
+                <Disc3 className="w-4 h-4 text-accent" />
                 <span>全库缓存任务</span>
               </label>
               {stats && (
-                <span className="text-[11px] text-neutral-500">
+                <span className="text-[11px] text-muted-2">
                   曲目 {fmtNum(stats.tracks)} · 歌手 {fmtNum(stats.artists)} · 专辑 {fmtNum(stats.albums)} ·
                   封面 {fmtNum(stats.covers_cached)} · 歌词 {fmtNum(stats.lyric_hits)}
                 </span>
               )}
             </div>
 
-            <p className="text-[11px] text-neutral-500 mb-3 leading-relaxed">
+            <p className="text-[11px] text-muted-2 mb-3 leading-relaxed">
               任务在服务器后台运行，关闭弹窗不会中断；结果持久化到
-              <code className="text-neutral-300"> covers/</code> 与
-              <code className="text-neutral-300"> lyrics/</code>，中断后再次启动会自动跳过已缓存的条目。
+              <code className="text-ink-3"> covers/</code> 与
+              <code className="text-ink-3"> lyrics/</code>，中断后再次启动会自动跳过已缓存的条目。
               全库首次缓存需要较长时间（网易云 / iTunes 有限流，任务会自动节流）。
             </p>
 
@@ -283,23 +283,23 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                 return (
                   <div
                     key={task.kind}
-                    className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800/80 hover:border-neutral-700 transition-colors"
+                    className="p-3.5 rounded-xl bg-app border border-line/80 hover:border-line-strong transition-colors"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 shrink-0">
+                        <div className="w-7 h-7 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
                           <Icon className="w-3.5 h-3.5" />
                         </div>
                         <div className="min-w-0">
-                          <div className="text-xs font-medium text-neutral-200">{task.title}</div>
-                          <div className="text-[11px] text-neutral-500">{task.hint}</div>
+                          <div className="text-xs font-medium text-ink-2">{task.title}</div>
+                          <div className="text-[11px] text-muted-2">{task.hint}</div>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {job?.running ? (
                           <button
                             onClick={() => handleStopJob(task.kind)}
-                            className="px-3 py-1.5 text-[11px] bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-700/50 rounded-lg transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 text-[11px] bg-amber/20 hover:bg-amber/30 text-amber border border-amber-dim/50 rounded-lg transition-colors flex items-center gap-1.5"
                           >
                             <Pause className="w-3.5 h-3.5" />
                             <span>停止</span>
@@ -308,7 +308,7 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                           <button
                             onClick={() => handleRunJob(task.kind)}
                             disabled={total === 0}
-                            className="px-3 py-1.5 text-[11px] bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white rounded-lg transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 text-[11px] bg-accent hover:bg-accent disabled:opacity-40 text-white rounded-lg transition-colors flex items-center gap-1.5"
                           >
                             <Play className="w-3.5 h-3.5" />
                             <span>{job && job.remaining === 0 ? '重新检查' : '开始缓存'}</span>
@@ -317,37 +317,37 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="mt-2.5 h-1.5 rounded-full bg-neutral-800 overflow-hidden">
+                    <div className="mt-2.5 h-1.5 rounded-full bg-surface-2 overflow-hidden">
                       <div
-                        className={`h-full rounded-full ${job?.running ? 'bg-gradient-to-r from-rose-500 to-amber-400' : 'bg-emerald-500/70'}`}
+                        className={`h-full rounded-full ${job?.running ? 'bg-gradient-to-r from-accent to-amber' : 'bg-emerald/70'}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
 
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-neutral-500">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-2">
                       <span>
-                        已处理 <span className="font-mono text-neutral-300">{fmtNum(done)} / {fmtNum(total)}</span>
+                        已处理 <span className="font-mono text-ink-3">{fmtNum(done)} / {fmtNum(total)}</span>
                       </span>
                       <span>
-                        命中 <span className="font-mono text-emerald-300">{fmtNum(job?.hits ?? 0)}</span>
+                        命中 <span className="font-mono text-emerald">{fmtNum(job?.hits ?? 0)}</span>
                       </span>
                       <span>
-                        无结果 <span className="font-mono text-neutral-400">{fmtNum(job?.misses ?? 0)}</span>
+                        无结果 <span className="font-mono text-muted">{fmtNum(job?.misses ?? 0)}</span>
                       </span>
                       {job?.errors ? (
                         <span>
-                          错误 <span className="font-mono text-rose-300">{fmtNum(job.errors)}</span>
+                          错误 <span className="font-mono text-accent-soft">{fmtNum(job.errors)}</span>
                         </span>
                       ) : null}
                       {job?.running ? (
-                        <span className="text-amber-300 flex items-center gap-1">
+                        <span className="text-amber flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           剩余 {fmtNum(job.remaining)} 条 · 约 {fmtDuration(job.etaSeconds)}
                         </span>
                       ) : job?.remaining ? (
-                        <span className="text-amber-400">已停止 · 剩余 {fmtNum(job.remaining)} 条</span>
+                        <span className="text-amber">已停止 · 剩余 {fmtNum(job.remaining)} 条</span>
                       ) : job?.finishedAt ? (
-                        <span className="text-emerald-400">已完成</span>
+                        <span className="text-emerald">已完成</span>
                       ) : null}
                     </div>
                   </div>
@@ -356,18 +356,18 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
             </div>
 
             {cacheError && (
-              <div className="mt-3 p-3 rounded-xl bg-rose-950/40 border border-rose-800 text-rose-300 flex items-center gap-2 text-xs">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <div className="mt-3 p-3 rounded-xl bg-accent-dim/40 border border-accent-dim text-accent-soft flex items-center gap-2 text-xs">
+                <AlertCircle className="w-4 h-4 shrink-0 text-accent" />
                 <span>{cacheError}</span>
               </div>
             )}
           </div>
 
           {/* Service Base URL & Test */}
-          <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800/80 space-y-3">
+          <div className="p-4 rounded-xl bg-app border border-line/80 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="font-medium text-neutral-200">服务端连接配置</span>
-              <span className="text-[11px] text-neutral-400">运行环境: Express + CORS</span>
+              <span className="font-medium text-ink-2">服务端连接配置</span>
+              <span className="text-[11px] text-muted">运行环境: Express + CORS</span>
             </div>
             <div className="flex gap-2">
               <input
@@ -375,17 +375,17 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder="留空为同源直连 (推荐) 或输入自定义地址如 http://localhost:3000"
-                className="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-xl text-neutral-200 font-mono text-xs focus:outline-none focus:border-rose-500"
+                className="flex-1 px-3 py-2 bg-surface border border-line rounded-xl text-ink-2 font-mono text-xs focus:outline-none focus:border-accent"
               />
               <button
                 onClick={handleSaveAndTest}
                 disabled={isTesting}
-                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-xl font-medium transition-colors flex items-center gap-1.5 shrink-0"
+                className="px-4 py-2 bg-surface-2 hover:bg-elevated text-ink-2 rounded-xl font-medium transition-colors flex items-center gap-1.5 shrink-0"
               >
                 {isTesting ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-rose-400" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-accent" />
                 )}
                 <span>测试连接</span>
               </button>
@@ -394,14 +394,14 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
               <div
                 className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs ${
                   testResult.ok
-                    ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300'
-                    : 'bg-rose-950/40 border-rose-800 text-rose-300'
+                    ? 'bg-emerald-dim/40 border-emerald-dim text-emerald'
+                    : 'bg-accent-dim/40 border-accent-dim text-accent-soft'
                 }`}
               >
                 {testResult.ok ? (
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <AlertCircle className="w-4 h-4 shrink-0 text-accent" />
                 )}
                 <span>{testResult.message}</span>
               </div>
@@ -411,11 +411,11 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
           {/* Multi-Directory Management */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="font-medium text-neutral-200 flex items-center gap-1.5">
-                <Folder className="w-4 h-4 text-amber-400" />
+              <label className="font-medium text-ink-2 flex items-center gap-1.5">
+                <Folder className="w-4 h-4 text-amber" />
                 <span>扫描根目录列表（可添加任意多个不同存储盘/路径）</span>
               </label>
-              <span className="text-[11px] text-neutral-500">已配置 {directories.length} 个路径</span>
+              <span className="text-[11px] text-muted-2">已配置 {directories.length} 个路径</span>
             </div>
 
             {/* List of directories */}
@@ -423,25 +423,25 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
               {directories.map((dir, idx) => (
                 <div
                   key={idx}
-                  className="group flex items-center justify-between p-2.5 bg-neutral-950 border border-neutral-800 rounded-xl hover:border-neutral-700 transition-colors"
+                  className="group flex items-center justify-between p-2.5 bg-app border border-line rounded-xl hover:border-line-strong transition-colors"
                 >
                   <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                    <Folder className="w-4 h-4 text-neutral-500 group-hover:text-amber-400 transition-colors shrink-0" />
-                    <span className="font-mono text-xs text-neutral-200 truncate select-all">{dir}</span>
+                    <Folder className="w-4 h-4 text-muted-2 group-hover:text-amber transition-colors shrink-0" />
+                    <span className="font-mono text-xs text-ink-2 truncate select-all">{dir}</span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={() => handleScanSingle(dir)}
                       disabled={isScanning}
                       title="只扫描此目录"
-                      className="px-2.5 py-1 text-[11px] bg-neutral-900 hover:bg-neutral-800 text-neutral-300 rounded-lg border border-neutral-800 transition-colors"
+                      className="px-2.5 py-1 text-[11px] bg-surface hover:bg-surface-2 text-ink-3 rounded-lg border border-line transition-colors"
                     >
                       单独扫描
                     </button>
                     <button
                       onClick={() => handleRemoveDirectory(dir)}
                       title="移除此目录"
-                      className="p-1.5 text-neutral-500 hover:text-rose-400 hover:bg-neutral-900 rounded-lg transition-colors"
+                      className="p-1.5 text-muted-2 hover:text-accent hover:bg-surface rounded-lg transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -460,14 +460,14 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                   if (e.key === 'Enter') handleAddDirectory();
                 }}
                 placeholder="输入绝对路径，例如 /home/you/Music 或 D:/Music"
-                className="flex-1 px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-neutral-200 font-mono text-xs focus:outline-none focus:border-rose-500"
+                className="flex-1 px-3 py-2 bg-app border border-line rounded-xl text-ink-2 font-mono text-xs focus:outline-none focus:border-accent"
               />
               <button
                 onClick={handleAddDirectory}
                 disabled={!newDirPath.trim()}
-                className="px-3.5 py-2 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 text-neutral-200 rounded-xl font-medium transition-colors flex items-center gap-1.5 shrink-0"
+                className="px-3.5 py-2 bg-surface-2 hover:bg-elevated disabled:opacity-40 text-ink-2 rounded-xl font-medium transition-colors flex items-center gap-1.5 shrink-0"
               >
-                <FolderPlus className="w-3.5 h-3.5 text-emerald-400" />
+                <FolderPlus className="w-3.5 h-3.5 text-emerald" />
                 <span>添加路径</span>
               </button>
             </div>
@@ -477,7 +477,7 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
               <button
                 onClick={handleScanAll}
                 disabled={isScanning || directories.length === 0}
-                className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2 shadow-lg shadow-rose-900/20"
+                className="w-full py-2.5 bg-accent hover:bg-accent disabled:opacity-50 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2 shadow-lg shadow-accent/20"
               >
                 {isScanning ? (
                   <>
@@ -494,24 +494,24 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
 
               {/* Scan Result Feedback */}
               {scanResult && (
-                <div className="mt-3 p-3.5 rounded-xl bg-neutral-950 border border-emerald-800/60 text-neutral-200 space-y-1.5 animate-in fade-in">
-                  <div className="flex items-center gap-2 text-emerald-400 font-medium">
+                <div className="mt-3 p-3.5 rounded-xl bg-app border border-emerald-dim/60 text-ink-2 space-y-1.5 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-emerald font-medium">
                     <CheckCircle2 className="w-4 h-4" />
                     <span>{scanResult.message}</span>
                   </div>
                   {scanResult.scan_summary && (
-                    <div className="text-[11px] text-neutral-400 grid grid-cols-3 gap-2 pt-1 border-t border-neutral-900">
-                      <div>已收录文件: <span className="text-neutral-200 font-mono">{scanResult.scan_summary.total_files}</span></div>
-                      <div>带内置标签: <span className="text-emerald-300 font-mono">{scanResult.scan_summary.tagged_files}</span></div>
-                      <div>目录/文件名解析: <span className="text-amber-300 font-mono">{scanResult.scan_summary.path_parsed_files}</span></div>
+                    <div className="text-[11px] text-muted grid grid-cols-3 gap-2 pt-1 border-t border-line-soft">
+                      <div>已收录文件: <span className="text-ink-2 font-mono">{scanResult.scan_summary.total_files}</span></div>
+                      <div>带内置标签: <span className="text-emerald font-mono">{scanResult.scan_summary.tagged_files}</span></div>
+                      <div>目录/文件名解析: <span className="text-amber font-mono">{scanResult.scan_summary.path_parsed_files}</span></div>
                     </div>
                   )}
                 </div>
               )}
 
               {scanError && (
-                <div className="mt-3 p-3 rounded-xl bg-rose-950/40 border border-rose-800 text-rose-300 flex items-center gap-2 text-xs">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <div className="mt-3 p-3 rounded-xl bg-accent-dim/40 border border-accent-dim text-accent-soft flex items-center gap-2 text-xs">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-accent" />
                   <span>{scanError}</span>
                 </div>
               )}
@@ -519,30 +519,30 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
           </div>
 
           {/* Architecture & Scanning Strategy Info Card */}
-          <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2.5">
-            <div className="flex items-center gap-2 text-rose-400 font-medium">
+          <div className="p-4 rounded-xl bg-app border border-line space-y-2.5">
+            <div className="flex items-center gap-2 text-accent font-medium">
               <AlertCircle className="w-4 h-4" />
               <span>扫描与缓存策略说明</span>
             </div>
-            <div className="text-[11px] text-neutral-400 leading-relaxed space-y-1.5">
+            <div className="text-[11px] text-muted leading-relaxed space-y-1.5">
               <p>
-                针对您不同的目录存放情况（如 <code className="text-neutral-300">KuGou/flac</code> 与 <code className="text-neutral-300">youtube</code>、<code className="text-neutral-300">youtube-music</code>）：
+                针对您不同的目录存放情况（如 <code className="text-ink-3">KuGou/flac</code> 与 <code className="text-ink-3">youtube</code>、<code className="text-ink-3">youtube-music</code>）：
               </p>
-              <ul className="list-disc pl-4 space-y-1 text-neutral-400">
+              <ul className="list-disc pl-4 space-y-1 text-muted">
                 <li>
-                  <strong className="text-neutral-200">无缝多目录支持</strong>：后端支持维护多个扫描根目录，无论歌曲分布在不同分区还是子文件夹，均可一次性扫描合并索引。
+                  <strong className="text-ink-2">无缝多目录支持</strong>：后端支持维护多个扫描根目录，无论歌曲分布在不同分区还是子文件夹，均可一次性扫描合并索引。
                 </li>
                 <li>
-                  <strong className="text-neutral-200">内置标签优先提取 (music-metadata)</strong>：针对 FLAC/MP3/MP4 等文件，优先读取其内部的 ID3/Vorbis/MP4 元数据标签（标题、歌手、专辑、时长）。
+                  <strong className="text-ink-2">内置标签优先提取 (music-metadata)</strong>：针对 FLAC/MP3/MP4 等文件，优先读取其内部的 ID3/Vorbis/MP4 元数据标签（标题、歌手、专辑、时长）。
                 </li>
                 <li>
-                  <strong className="text-neutral-200">智能目录与文件名回退</strong>：对于 YouTube 下载或酷狗批量下载等无内置标签的文件，系统自动识别标准分层结构（<code className="text-neutral-300">歌手/专辑/歌曲</code>），并支持从形如 <code className="text-neutral-300">歌手 - 歌名</code> 的文件名中解析出歌手与曲名，专辑自动归类，不会出现混乱或识别失败。
+                  <strong className="text-ink-2">智能目录与文件名回退</strong>：对于 YouTube 下载或酷狗批量下载等无内置标签的文件，系统自动识别标准分层结构（<code className="text-ink-3">歌手/专辑/歌曲</code>），并支持从形如 <code className="text-ink-3">歌手 - 歌名</code> 的文件名中解析出歌手与曲名，专辑自动归类，不会出现混乱或识别失败。
                 </li>
                 <li>
-                  <strong className="text-neutral-200">增量扫描</strong>：已索引且 (修改时间, 大小) 未变化的文件会被跳过，只有新增或改动的文件才重新解析元数据。
+                  <strong className="text-ink-2">增量扫描</strong>：已索引且 (修改时间, 大小) 未变化的文件会被跳过，只有新增或改动的文件才重新解析元数据。
                 </li>
                 <li>
-                  <strong className="text-neutral-200">封面 / 歌词缓存</strong>：封面三级兜底（本地内嵌 → iTunes → 网易云）存 <code className="text-neutral-300">covers/</code>；歌词来自网易云明文接口，存 <code className="text-neutral-300">lyrics/</code>，索引在 <code className="text-neutral-300">fastmusic_covers.json</code> / <code className="text-neutral-300">fastmusic_lyrics.json</code>。
+                  <strong className="text-ink-2">封面 / 歌词缓存</strong>：封面三级兜底（本地内嵌 → iTunes → 网易云）存 <code className="text-ink-3">covers/</code>；歌词来自网易云明文接口，存 <code className="text-ink-3">lyrics/</code>，索引在 <code className="text-ink-3">fastmusic_covers.json</code> / <code className="text-ink-3">fastmusic_lyrics.json</code>。
                 </li>
               </ul>
             </div>
@@ -550,10 +550,10 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3.5 border-t border-neutral-800 bg-neutral-900/90 flex justify-end shrink-0">
+        <div className="px-6 py-3.5 border-t border-line bg-surface/90 flex justify-end shrink-0">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-xl text-xs font-medium transition-colors"
+            className="px-4 py-1.5 bg-surface-2 hover:bg-elevated text-ink-2 rounded-xl text-xs font-medium transition-colors"
           >
             完成并关闭
           </button>

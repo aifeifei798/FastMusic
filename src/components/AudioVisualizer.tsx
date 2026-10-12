@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Activity, BarChart2, Waves, Disc } from 'lucide-react';
+import { currentTheme, VISUALIZER_PALETTE } from '../utils/theme';
 
 export type VisualizerMode = 'bars' | 'wave' | 'circle' | 'mirrored' | 'none';
 
@@ -89,10 +90,11 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         bassEnergy = 0.25 + 0.15 * Math.sin(phase * 1.5);
       }
 
+      const pal = palette(); // 每帧读主题, 切换后配色自动变
       const glowRadius = Math.max(60, width * 0.45 * (0.8 + bassEnergy * 0.5));
       const gradient = ctx.createRadialGradient(centerX, centerY, 30, centerX, centerY, glowRadius);
-      gradient.addColorStop(0, isPlaying ? `rgba(244, 63, 94, ${0.15 + bassEnergy * 0.25})` : 'rgba(255, 255, 255, 0.02)');
-      gradient.addColorStop(0.5, isPlaying ? `rgba(251, 113, 133, ${0.05 + bassEnergy * 0.1})` : 'rgba(0, 0, 0, 0)');
+      gradient.addColorStop(0, isPlaying ? `${pal.glow[0]}${(0.15 + bassEnergy * 0.25) * pal.glowScale})` : 'rgba(255, 255, 255, 0.02)');
+      gradient.addColorStop(0.5, isPlaying ? `${pal.glow[1]}${(0.05 + bassEnergy * 0.1) * pal.glowScale})` : 'rgba(0, 0, 0, 0)');
       gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
@@ -112,6 +114,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     };
 
     // --- Sub-renderers ---
+    // 每次调用都读当前主题, 切主题后 canvas 配色自动变
+    const palette = () => VISUALIZER_PALETTE[currentTheme()];
 
     // Mode A: Classic EQ Spectrum Bars
     function renderBars(
@@ -124,6 +128,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       active: boolean,
       p: number
     ) {
+      const pal = palette();
       const numBars = 52;
       const gap = 4;
       const barWidth = Math.max(4, (w - numBars * gap) / numBars);
@@ -149,16 +154,16 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         const x = startX + i * (barWidth + gap);
         const y = bottomY - barH;
 
-        // Gradient from amber/rose to hot pink
+        // 频谱条: 深色主题亮 rose 渐变, 浅色主题更饱和的深 rose(浅底上浅粉看不见)
         const barGrad = c.createLinearGradient(0, y, 0, bottomY);
         if (active) {
-          barGrad.addColorStop(0, '#fda4af'); // rose-300 peak
-          barGrad.addColorStop(0.3, '#f43f5e'); // rose-500
-          barGrad.addColorStop(0.7, '#e11d48'); // rose-600
-          barGrad.addColorStop(1, '#9f1239'); // rose-800
+          barGrad.addColorStop(0, pal.barActive[0]);
+          barGrad.addColorStop(0.3, pal.barActive[1]);
+          barGrad.addColorStop(0.7, pal.barActive[2]);
+          barGrad.addColorStop(1, pal.barActive[3]);
         } else {
-          barGrad.addColorStop(0, '#52525b');
-          barGrad.addColorStop(1, '#27272a');
+          barGrad.addColorStop(0, pal.barIdle[0]);
+          barGrad.addColorStop(1, pal.barIdle[1]);
         }
 
         c.fillStyle = barGrad;
@@ -173,7 +178,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
         // Little floating peak caps
         if (active && barH > 12) {
-          c.fillStyle = '#ffffff';
+          c.fillStyle = pal.peakCap;
           c.fillRect(x, Math.max(10, y - 4), barWidth, 2);
         }
       }
@@ -189,8 +194,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       active: boolean,
       p: number
     ) {
+      const pal = palette();
       c.lineWidth = 3;
-      c.strokeStyle = active ? '#f43f5e' : '#52525b';
+      c.strokeStyle = active ? pal.waveActive : pal.waveIdle;
       c.beginPath();
 
       const sliceWidth = w / bufferLength;
@@ -218,7 +224,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       // Soft glow stroke layer
       if (active) {
         c.lineWidth = 8;
-        c.strokeStyle = 'rgba(244, 63, 94, 0.25)';
+        c.strokeStyle = pal.glowStroke;
         c.stroke();
       }
     }
@@ -235,6 +241,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       active: boolean,
       p: number
     ) {
+      const pal = palette();
       const radius = Math.min(w, h) * 0.32;
       const points = 64;
       const angleStep = (Math.PI * 2) / points;
@@ -262,8 +269,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         c.lineTo(x2, y2);
         c.lineWidth = 3;
         c.strokeStyle = active
-          ? `hsl(${(i / points) * 60 + 340}, 90%, 65%)`
-          : '#3f3f46';
+          ? `hsl(${(i / points) * 60 + 340}, ${pal.circleSat}%, ${pal.circleLight}%)`
+          : pal.circleIdle;
         c.lineCap = 'round';
         c.stroke();
       }
@@ -281,6 +288,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       active: boolean,
       p: number
     ) {
+      const pal = palette();
       const numBars = 48;
       const gap = 3;
       const barWidth = Math.max(3, (w - numBars * gap) / numBars);
@@ -302,12 +310,12 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
         const grad = c.createLinearGradient(0, centerY - barH, 0, centerY + barH);
         if (active) {
-          grad.addColorStop(0, '#f43f5e');
-          grad.addColorStop(0.5, '#fb7185');
-          grad.addColorStop(1, '#f43f5e');
+          grad.addColorStop(0, pal.barActive[1]);
+          grad.addColorStop(0.5, pal.barActive[0]);
+          grad.addColorStop(1, pal.barActive[1]);
         } else {
-          grad.addColorStop(0, '#3f3f46');
-          grad.addColorStop(1, '#27272a');
+          grad.addColorStop(0, pal.mirroredIdle[0]);
+          grad.addColorStop(1, pal.mirroredIdle[1]);
         }
 
         c.fillStyle = grad;
@@ -329,7 +337,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   }, [isPlaying, visualizerMode]);
 
   return (
-    <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-neutral-900/95 via-neutral-950/95 to-neutral-950 rounded-2xl border border-neutral-800/80 p-6 select-none">
+    <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-surface/95 via-app/95 to-app rounded-2xl border border-line/80 p-6 select-none">
       {/* Background canvas for spectrum */}
       <canvas
         ref={canvasRef}

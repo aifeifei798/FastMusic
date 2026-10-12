@@ -6,7 +6,9 @@ import {
   History,
   Keyboard,
   Sparkles,
-  Heart
+  Heart,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { MediaItem, ArtistSummary, AlbumSummary, PlayMode, PlayHistoryItem, RadioChannel, TrackSort } from './types/media';
 import { mediaApi } from './services/api';
@@ -76,6 +78,18 @@ export default function App() {
   // 所以配合工具栏的「预取歌词」按钮使用效果最好。持久化到 localStorage。
   const [hasLyricsOnly, setHasLyricsOnly] = useState<boolean>(() => {
     try { return localStorage.getItem('fastmusic_has_lyrics') === '1'; } catch { return false; }
+  });
+  // 主题: dark(默认) / light。持久化到 localStorage('fastmusic_theme')，
+  // 未设置时跟随系统 prefers-color-scheme。颜色全部走 index.css 的语义 token，
+  // 切主题只需改 <html> 的 data-theme。
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try {
+      const saved = localStorage.getItem('fastmusic_theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+    } catch {}
+    return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+      ? 'light'
+      : 'dark';
   });
 
   // Player state
@@ -211,6 +225,16 @@ export default function App() {
       try { localStorage.setItem('fastmusic_density', next); } catch {}
       return next;
     });
+  }, []);
+
+  // 主题切换: 写 data-theme 到 <html>, Tailwind token 变量随之覆盖, 全站自动换肤
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem('fastmusic_theme', theme); } catch {}
+  }, [theme]);
+
+  const handleToggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   }, []);
 
   // 搜索防抖: 输入框文本 300ms 后才触发请求，避免每键一次全库扫描
@@ -471,14 +495,17 @@ export default function App() {
   prevNextRef.current = { prev: handlePrevTrack, next: handleNextTrack };
 
   return (
-    <div className="h-screen overflow-hidden bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-rose-500/30 selection:text-rose-200">
+    <div className="h-screen overflow-hidden bg-app text-ink flex flex-col font-sans selection:bg-accent/30 selection:text-accent-soft">
+      {/* 品牌色光晕: 页头后面的一层 rose→amber 径向渐变, 让深浅页面都呼应徽标的渐变 */}
+      <div className="fixed inset-0 -z-10 theme-wash pointer-events-none" aria-hidden="true" />
+
       {/* ================= ZONE 1, 2, 3: TOP BAR CONTRACT ================= */}
-      <header className="sticky top-0 z-40 w-full bg-neutral-950/90 backdrop-blur-md border-b border-neutral-800/80">
+      <header className="sticky top-0 z-40 w-full bg-app/90 backdrop-blur-md border-b border-line/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-6">
           {/* Zone 1: 品牌徽标 + wordmark */}
           <div className="flex items-center gap-2.5 shrink-0">
-            <LogoMark className="w-8 h-8 rounded-lg shadow-md shadow-rose-950/40" />
-            <span className="text-base sm:text-lg font-bold tracking-tight text-white whitespace-nowrap">
+            <LogoMark className="w-8 h-8 rounded-lg shadow-md shadow-accent/40" />
+            <span className="text-base sm:text-lg font-bold tracking-tight text-ink whitespace-nowrap">
               FastMusic
             </span>
           </div>
@@ -490,11 +517,11 @@ export default function App() {
               title={isRadioMode ? '点击退出电台模式' : '进入随心电台，随机连播'}
               className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 ${
                 isRadioMode
-                  ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white border-rose-400 shadow-rose-950/40'
-                  : 'bg-neutral-900 hover:bg-neutral-800 text-rose-300 hover:text-rose-200 border-neutral-700/80'
+                  ? 'bg-gradient-to-r from-accent to-amber text-white border-accent shadow-accent/40'
+                  : 'bg-surface hover:bg-surface-2 text-accent-soft hover:text-accent-soft border-line-strong/80'
               }`}
             >
-              <Radio className={`w-3.5 h-3.5 ${isRadioMode ? 'animate-pulse text-white' : 'text-rose-400'}`} />
+              <Radio className={`w-3.5 h-3.5 ${isRadioMode ? 'animate-pulse text-white' : 'text-accent'}`} />
               <span>{isRadioMode ? '电台广播中' : '随心电台'}</span>
             </button>
 
@@ -505,11 +532,11 @@ export default function App() {
                 setLibraryActiveTab('favorites');
               }}
               title="查看我的收藏列表"
-              className="relative p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+              className="relative p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
             >
-              <Heart className={`w-4 h-4 ${favorites.length > 0 ? 'text-rose-500 fill-rose-500' : 'text-neutral-400'}`} />
+              <Heart className={`w-4 h-4 ${favorites.length > 0 ? 'text-accent fill-accent' : 'text-muted'}`} />
               {favorites.length > 0 && (
-                <span className="absolute -top-1 -right-1 px-1.5 min-w-4 text-[10px] font-mono font-bold bg-rose-600 text-white rounded-full text-center">
+                <span className="absolute -top-1 -right-1 px-1.5 min-w-4 text-[10px] font-mono font-bold bg-accent text-white rounded-full text-center">
                   {favorites.length}
                 </span>
               )}
@@ -518,11 +545,11 @@ export default function App() {
             <button
               onClick={() => setIsHistoryModalOpen(true)}
               title="播放历史记录"
-              className="relative p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+              className="relative p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
             >
-              <History className="w-4 h-4 text-rose-400" />
+              <History className="w-4 h-4 text-accent" />
               {history.length > 0 && (
-                <span className="absolute -top-1 -right-1 px-1.5 min-w-4 text-[10px] font-mono font-bold bg-neutral-800 text-rose-300 border border-neutral-700 rounded-full text-center">
+                <span className="absolute -top-1 -right-1 px-1.5 min-w-4 text-[10px] font-mono font-bold bg-surface-2 text-accent-soft border border-line-strong rounded-full text-center">
                   {history.length}
                 </span>
               )}
@@ -531,16 +558,25 @@ export default function App() {
             <button
               onClick={() => setShowShortcutsModal(true)}
               title="快捷键说明 (?)"
-              className="p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+              className="p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
             >
               <Keyboard className="w-4 h-4" />
             </button>
 
             <button
-              onClick={() => setIsServerModalOpen(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-medium text-neutral-200 hover:text-white transition-colors flex items-center gap-2 shadow-sm"
+              onClick={handleToggleTheme}
+              title={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
+              aria-label="切换主题"
+              className="p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
             >
-              <Server className="w-3.5 h-3.5 text-rose-500" />
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+
+            <button
+              onClick={() => setIsServerModalOpen(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-surface hover:bg-surface-2 border border-line text-xs font-medium text-ink-2 hover:text-ink transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <Server className="w-3.5 h-3.5 text-accent" />
               <span className="hidden sm:inline">系统配置</span>
               <span className="sm:hidden">配置</span>
             </button>
@@ -623,7 +659,7 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="mt-2 border-t border-neutral-900 bg-neutral-950 py-3 px-4 text-center text-xs text-neutral-500">
+      <footer className="mt-2 border-t border-line-soft bg-app py-3 px-4 text-center text-xs text-muted-2">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <LogoMark className="w-5 h-5 rounded-md" />
@@ -632,21 +668,21 @@ export default function App() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsHistoryModalOpen(true)}
-              className="hover:text-rose-400 transition-colors"
+              className="hover:text-accent transition-colors"
             >
               播放历史
             </button>
-            <span aria-hidden="true" className="text-neutral-800">·</span>
+            <span aria-hidden="true" className="text-faint">·</span>
             <button
               onClick={() => setShowShortcutsModal(true)}
-              className="hover:text-rose-400 transition-colors"
+              className="hover:text-accent transition-colors"
             >
               快捷键说明
             </button>
-            <span aria-hidden="true" className="text-neutral-800">·</span>
+            <span aria-hidden="true" className="text-faint">·</span>
             <button
               onClick={() => setIsServerModalOpen(true)}
-              className="hover:text-neutral-300 transition-colors"
+              className="hover:text-ink-3 transition-colors"
             >
               系统配置
             </button>
@@ -673,60 +709,60 @@ export default function App() {
       {/* Keyboard Shortcuts Modal */}
       {showShortcutsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl p-6">
-            <h3 className="font-semibold text-neutral-100 text-sm mb-4 flex items-center gap-2">
-              <Keyboard className="w-4 h-4 text-rose-500" />
+          <div className="w-full max-w-sm bg-surface border border-line rounded-2xl shadow-2xl p-6">
+            <h3 className="font-semibold text-ink text-sm mb-4 flex items-center gap-2">
+              <Keyboard className="w-4 h-4 text-accent" />
               <span>键盘快捷键指南</span>
             </h3>
-            <div className="space-y-3 text-xs text-neutral-300">
-              <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
-                <span className="text-neutral-400">播放 / 暂停</span>
-                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-white">Space</kbd>
+            <div className="space-y-3 text-xs text-ink-3">
+              <div className="flex justify-between items-center py-1 border-b border-line/60">
+                <span className="text-muted">播放 / 暂停</span>
+                <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-ink">Space</kbd>
               </div>
-              <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
-                <span className="text-neutral-400">快退 5 秒</span>
-                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-white">← 方向左键</kbd>
+              <div className="flex justify-between items-center py-1 border-b border-line/60">
+                <span className="text-muted">快退 5 秒</span>
+                <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-ink">← 方向左键</kbd>
               </div>
-              <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
-                <span className="text-neutral-400">快进 5 秒</span>
-                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-white">→ 方向右键</kbd>
+              <div className="flex justify-between items-center py-1 border-b border-line/60">
+                <span className="text-muted">快进 5 秒</span>
+                <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-ink">→ 方向右键</kbd>
               </div>
-              <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
-                <span className="text-neutral-400">调节音量</span>
-                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-white">↑ / ↓ 方向键</kbd>
+              <div className="flex justify-between items-center py-1 border-b border-line/60">
+                <span className="text-muted">调节音量</span>
+                <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-ink">↑ / ↓ 方向键</kbd>
               </div>
-              <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
-                <span className="text-neutral-400">切换全屏</span>
-                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-white">F 键</kbd>
+              <div className="flex justify-between items-center py-1 border-b border-line/60">
+                <span className="text-muted">切换全屏</span>
+                <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-ink">F 键</kbd>
               </div>
-              <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
-                <span className="text-neutral-400">静音 / 恢复</span>
-                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-white">M 键</kbd>
+              <div className="flex justify-between items-center py-1 border-b border-line/60">
+                <span className="text-muted">静音 / 恢复</span>
+                <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-ink">M 键</kbd>
               </div>
-              <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
-                <span className="text-neutral-400">上一首 / 下一首</span>
-                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-white">J / K</kbd>
+              <div className="flex justify-between items-center py-1 border-b border-line/60">
+                <span className="text-muted">上一首 / 下一首</span>
+                <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-ink">J / K</kbd>
               </div>
-              <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
-                <span className="text-neutral-400">随心电台 (随机连播)</span>
-                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-rose-300">R 键</kbd>
+              <div className="flex justify-between items-center py-1 border-b border-line/60">
+                <span className="text-muted">随心电台 (随机连播)</span>
+                <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-accent-soft">R 键</kbd>
               </div>
-              <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
-                <span className="text-neutral-400">收藏 / 取消收藏当前曲目</span>
-                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-rose-300">S 键</kbd>
+              <div className="flex justify-between items-center py-1 border-b border-line/60">
+                <span className="text-muted">收藏 / 取消收藏当前曲目</span>
+                <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-accent-soft">S 键</kbd>
               </div>
-              <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
-                <span className="text-neutral-400">歌词 开 / 关</span>
-                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-rose-300">L 键</kbd>
+              <div className="flex justify-between items-center py-1 border-b border-line/60">
+                <span className="text-muted">歌词 开 / 关</span>
+                <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-accent-soft">L 键</kbd>
               </div>
               <div className="flex justify-between items-center py-1">
-                <span className="text-neutral-400">本面板 开 / 关</span>
-                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-white">?</kbd>
+                <span className="text-muted">本面板 开 / 关</span>
+                <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-ink">?</kbd>
               </div>
             </div>
             <button
               onClick={() => setShowShortcutsModal(false)}
-              className="mt-6 w-full py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-xs font-medium transition-colors"
+              className="mt-6 w-full py-2 bg-surface-2 hover:bg-elevated text-ink rounded-xl text-xs font-medium transition-colors"
             >
               我知道了
             </button>

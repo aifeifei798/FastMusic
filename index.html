@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,10 +12,21 @@
     <meta property="og:image" content="https://raw.githubusercontent.com/aifeifei798/FastMusic/main/docs/logo.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="alternate icon" href="/favicon.svg" />
+    <script>
+      // 首屏前确定主题, 避免深浅色切换时的闪烁(FOUC)。
+      // App.tsx 里的 theme state 读同一个 localStorage key, 两者始终一致。
+      (function () {
+        var saved = null;
+        try { saved = localStorage.getItem('fastmusic_theme'); } catch (e) {}
+        var theme = saved === 'light' || saved === 'dark'
+          ? saved
+          : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
   </head>
-  <body class="bg-neutral-950 text-neutral-100 antialiased selection:bg-rose-500/30 selection:text-rose-200">
+  <body class="bg-app text-ink antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

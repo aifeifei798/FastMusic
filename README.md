@@ -35,7 +35,8 @@
 - **歌词**: 网易云歌词竖列(当前行居中高亮,上下行淡出),控制栏 Captions 按钮或 `L` 切换,"Aa" 面板可调字号与(视频时)歌词列宽;「只看有歌词」筛选走服务端歌词缓存,列表行有歌词图标 badge。
 - **全库缓存任务(系统配置)**: 页头 / 页脚的「系统配置」面板里有四个后台任务 —— 缓存全部歌曲 / MTV 封面、全部歌手封面、全部专辑封面、全部歌曲 / MTV 歌词。任务在服务端后台跑(关闭弹窗继续执行),每 2 秒刷新进度条、命中 / 无结果计数与剩余时间估算;已缓存的条目自动跳过,所以重复点击只是"补齐新增内容"。手动停止后显示「已停止 · 剩余 N 条」,下次再启动从剩余部分继续。
 - **快捷键**: `J`/`K` 上一首/下一首, `S` 收藏, `L` 歌词, `R` 随心电台, `?` 快捷键面板, `Esc` 关闭。
-- **样式**: 全部用 Tailwind utility 类(含 arbitrary variant / arbitrary property),`src/index.css` 只有两个 `@import`,没有手写 CSS 规则。
+- **深浅主题**: 页头的 Sun/Moon 按钮切换深色 / 浅色主题,偏好持久化到 `localStorage('fastmusic_theme')`,首次访问跟随系统 `prefers-color-scheme`。所有颜色都是 `src/index.css` 里的语义 token(`app / surface / line / ink / accent / amber / stage / viewport / pill / lyric-ink ...`),`[data-theme="light"]` 覆盖变量即全站换肤,组件里不写 `neutral-` / `rose-` 这类硬编码色。浅色主题是 Apple 风(近黑文字 + 白卡片 + hairline 边框 + 克制 rose),深色主题带 rose/amber 暖调呼应徽标;视频 `<video>` 视口在两个主题都保持深色,只有舞台背景变浅。
+- **样式**: 全部用 Tailwind utility 类(含 arbitrary variant / arbitrary property),`src/index.css` 只有两个 `@import` + 主题令牌块,没有手写规则。
 
 ## 🚀 快速开始
 
@@ -88,6 +89,8 @@ src/
     ...
   services/api.ts      # 客户端 API 单例
   utils/ui.ts          # 共享 Tailwind 类常量(滚动条样式)
+  utils/theme.ts       # canvas / 占位渐变的主题配色 (VISUALIZER_PALETTE, coverGradient)
+  index.css            # Tailwind 入口 + 语义主题令牌(深色默认, [data-theme=light] 覆盖)
   types/media.ts       # 共享类型, 与 server 响应形状一致
 ```
 

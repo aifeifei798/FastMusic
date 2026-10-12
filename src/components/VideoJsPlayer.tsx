@@ -987,34 +987,34 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       // 因为舞台 overlay(absolute inset-0 z-[15])、控制胶囊、歌词列都是根容器的直接子元素,
       // 浏览器按指针下方最上层元素解析 cursor, 只给视口 div 加 cursor-none 时这些区域仍显示指针。
       // cursor 是继承属性, 根容器设 cursor-none 后 video.js 的 wrapper/<video> 也继承。
-      className={`relative w-full bg-neutral-950 flex flex-col justify-between overflow-hidden transition-all duration-300 [&_.vjs-custom-theme]:font-[inherit]! [&_.vjs-custom-theme]:bg-transparent! [&_.vjs-custom-theme]:w-full! [&_.vjs-custom-theme]:h-full! [&_.vjs-custom-theme_.vjs-tech]:object-contain! [&_.video-js:focus]:outline-none! ${
-        isFullscreen ? 'h-screen w-screen' : isTheaterMode ? 'h-[clamp(300px,calc(100vh-300px),580px)] rounded-2xl border border-neutral-800 shadow-2xl' : 'h-[clamp(240px,calc(100vh-420px),440px)] rounded-2xl border border-neutral-800/80 shadow-xl'
+      className={`relative w-full bg-app flex flex-col justify-between overflow-hidden transition-all duration-300 [&_.vjs-custom-theme]:font-[inherit]! [&_.vjs-custom-theme]:bg-transparent! [&_.vjs-custom-theme]:w-full! [&_.vjs-custom-theme]:h-full! [&_.vjs-custom-theme_.vjs-tech]:object-contain! [&_.video-js:focus]:outline-none! ${
+        isFullscreen ? 'h-screen w-screen' : isTheaterMode ? 'h-[clamp(300px,calc(100vh-300px),580px)] rounded-2xl border border-line shadow-2xl' : 'h-[clamp(240px,calc(100vh-420px),440px)] rounded-2xl border border-line/80 shadow-xl'
       } ${isFullscreen && isVideo && !showControls ? 'cursor-none' : ''}`}
     >
       {/* Top Overlay Badge & Header Info */}
       <div
-        className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-neutral-950/80 via-neutral-950/40 to-transparent transition-opacity duration-300 ${
+        className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-app/80 via-app/40 to-transparent transition-opacity duration-300 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-neutral-900/80 border border-neutral-700/60 backdrop-blur-md text-xs font-semibold">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface/80 border border-line-strong/60 backdrop-blur-md text-xs font-semibold">
             {isVideo ? (
-              <Film className="w-3.5 h-3.5 text-rose-400" />
+              <Film className="w-3.5 h-3.5 text-accent" />
             ) : (
-              <Music className="w-3.5 h-3.5 text-rose-400" />
+              <Music className="w-3.5 h-3.5 text-accent" />
             )}
             {/* .mkv 实际流是转码后的 WebM 侧车，徽章显示真实播放格式 */}
-            <span className="uppercase text-neutral-200">
+            <span className="uppercase text-ink-2">
               {currentTrack?.ext === '.mkv' ? 'webm' : currentTrack?.ext?.replace('.', '') || 'MEDIA'}
             </span>
-            <span className="text-neutral-500">|</span>
-            <span className="text-rose-400 font-mono">
+            <span className="text-muted-2">|</span>
+            <span className="text-accent font-mono">
               {isVideo ? 'HD MTV' : 'LOSSLESS'}
             </span>
           </div>
 
-          <div className="hidden sm:block text-xs text-neutral-300 font-medium truncate max-w-xs md:max-w-md">
+          <div className="hidden sm:block text-xs text-ink-3 font-medium truncate max-w-xs md:max-w-md">
             {currentTrack ? `${currentTrack.artist} — ${currentTrack.title}` : '未选择曲目'}
           </div>
         </div>
@@ -1025,8 +1025,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             title={transcode.error || undefined}
             className={`flex items-center gap-2 px-2.5 py-1 rounded-lg text-xs font-medium border backdrop-blur-md ${
               transcode.status === 'error'
-                ? 'bg-red-950/70 border-red-800/70 text-red-300'
-                : 'bg-amber-950/70 border-amber-800/70 text-amber-300'
+                ? 'bg-danger-dim/70 border-danger-dim/70 text-danger'
+                : 'bg-amber-dim/70 border-amber-dim/70 text-amber'
             }`}
           >
             {transcode.status === 'error' ? (
@@ -1052,7 +1052,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <button
               onClick={togglePiP}
               title="画中画 (Picture in Picture)"
-              className="p-1.5 rounded-lg bg-neutral-900/70 hover:bg-neutral-800 text-neutral-300 hover:text-white transition-colors border border-neutral-800"
+              className="p-1.5 rounded-lg bg-surface/70 hover:bg-surface-2 text-ink-3 hover:text-ink transition-colors border border-line"
             >
               <PictureInPicture className="w-4 h-4" />
             </button>
@@ -1060,7 +1060,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
           {/* 均衡器 视觉模式切换 — 音频曲目，与媒体标记同一行 */}
           {!isVideo && (
-            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-neutral-950/80 border border-neutral-800/80 backdrop-blur-md shadow-lg">
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-app/80 border border-line/80 backdrop-blur-md shadow-lg">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1069,8 +1069,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 title="经典柱状频谱 (Bars EQ)"
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
                   visualizerMode === 'bars'
-                    ? 'bg-rose-600 text-white shadow-sm'
-                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-muted hover:text-ink-2 hover:bg-surface-2/60'
                 }`}
               >
                 <BarChart2 className="w-3.5 h-3.5" />
@@ -1085,8 +1085,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 title="示波器波形 (Waveform)"
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
                   visualizerMode === 'wave'
-                    ? 'bg-rose-600 text-white shadow-sm'
-                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-muted hover:text-ink-2 hover:bg-surface-2/60'
                 }`}
               >
                 <Waves className="w-3.5 h-3.5" />
@@ -1101,8 +1101,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 title="光晕环状频谱 (Circular Halo)"
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
                   visualizerMode === 'circle'
-                    ? 'bg-rose-600 text-white shadow-sm'
-                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-muted hover:text-ink-2 hover:bg-surface-2/60'
                 }`}
               >
                 <Disc className="w-3.5 h-3.5" />
@@ -1117,8 +1117,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 title="对称双向频谱 (Mirrored EQ)"
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
                   visualizerMode === 'mirrored'
-                    ? 'bg-rose-600 text-white shadow-sm'
-                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-muted hover:text-ink-2 hover:bg-surface-2/60'
                 }`}
               >
                 <Activity className="w-3.5 h-3.5" />
@@ -1133,8 +1133,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 title="无频谱（纯黑舞台，只保留歌词与信息）"
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
                   visualizerMode === 'none'
-                    ? 'bg-rose-600 text-white shadow-sm'
-                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-muted hover:text-ink-2 hover:bg-surface-2/60'
                 }`}
               >
                 <EyeOff className="w-3.5 h-3.5" />
@@ -1148,7 +1148,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       {/* Main Media Viewport */}
       <div 
         // 与根容器保持一致: 控制栏隐藏时视口也 cursor-none(否则 cursor-pointer 会覆盖继承的 none)。
-        className={`relative flex-1 w-full h-full flex items-center justify-center bg-black overflow-hidden ${
+        // 视频视口始终深色(画面需要对比度); 纯音频曲目时视口就是频谱/歌词的底,
+        // 浅色主题下用舞台色, 让"无频谱"时舞台也是浅色而不是一块黑。
+        className={`relative flex-1 w-full h-full flex items-center justify-center ${isVideo ? 'bg-viewport' : 'bg-stage'} overflow-hidden ${
           isFullscreen && isVideo && !showControls ? 'cursor-none' : 'cursor-pointer'
         }`}
         onClick={togglePlay}
@@ -1168,11 +1170,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         {needsTranscode && transcode && transcode.status !== 'done' && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/70">
             {transcode.status === 'error' ? (
-              <AlertTriangle className="w-10 h-10 text-red-400" />
+              <AlertTriangle className="w-10 h-10 text-danger" />
             ) : (
-              <Loader2 className="w-10 h-10 animate-spin text-rose-400" />
+              <Loader2 className="w-10 h-10 animate-spin text-accent" />
             )}
-            <p className="text-neutral-200 font-medium text-lg">
+            <p className="text-ink-2 font-medium text-lg">
               {transcode.status === 'error'
                 ? '转码失败'
                 : transcode.status === 'queued'
@@ -1181,7 +1183,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 ? `转码中 ${transcode.progress}%`
                 : '转码中…'}
             </p>
-            <p className="text-xs text-neutral-500 max-w-md text-center">
+            <p className="text-xs text-muted-2 max-w-md text-center">
               MKV 需转成 WebM(VP9+Opus) 才能在本机 Chrome 出画面，完成后自动开始播放。
             </p>
           </div>
@@ -1201,7 +1203,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         {/* Big Center Play/Pause indicator on hover or pause */}
         {isVideo && !isPlaying && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-            <div className="w-16 h-16 rounded-full bg-rose-600/90 text-white flex items-center justify-center shadow-2xl hover:scale-110 transition-transform">
+            <div className="w-16 h-16 rounded-full bg-accent/90 text-white flex items-center justify-center shadow-2xl hover:scale-110 transition-transform">
               <Play className="w-8 h-8 ml-1" />
             </div>
           </div>
@@ -1237,13 +1239,13 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           {/* 左列: 正在播放的曲目信息 (仅音频曲目; min-h-0 让 grid 的 1fr 行不被内容撑高) */}
           {!isVideo && (
             <div className="min-w-0 min-h-0 flex flex-col justify-center gap-1.5 text-right pr-3">
-              <span className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">正在播放</span>
-              <h2 className="text-lg sm:text-xl font-bold leading-tight text-neutral-100 break-words drop-shadow-md">
+              <span className="text-[10px] uppercase tracking-[0.22em] text-muted-2">正在播放</span>
+              <h2 className="text-lg sm:text-xl font-bold leading-tight text-ink break-words drop-shadow-md">
                 {currentTrack.title}
               </h2>
-              <p className="text-sm font-medium text-rose-400">{currentTrack.artist || '未知歌手'}</p>
+              <p className="text-sm font-medium text-accent">{currentTrack.artist || '未知歌手'}</p>
               {currentTrack.album && (
-                <p className="text-[11px] leading-snug text-neutral-500 break-words">{currentTrack.album}</p>
+                <p className="text-[11px] leading-snug text-muted-2 break-words">{currentTrack.album}</p>
               )}
             </div>
           )}
@@ -1254,11 +1256,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               两侧 hairline 让三列结构更清晰 */}
           {!isVideo && (
             <div className="self-center relative h-[62%] flex items-center justify-center">
-              <span className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neutral-700/45 to-transparent" />
-              <span className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neutral-700/45 to-transparent" />
+              <span className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-elevated/45 to-transparent" />
+              <span className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-elevated/45 to-transparent" />
               <div
-                className={`relative h-[min(100%,220px)] aspect-square rounded-full bg-neutral-950 border-4 border-neutral-800/90 shadow-2xl flex items-center justify-center ${
-                  isPlaying ? 'animate-[spin_14s_linear_infinite] shadow-rose-950/50' : ''
+                className={`relative h-[min(100%,220px)] aspect-square rounded-full bg-vinyl border-4 border-line/90 shadow-2xl flex items-center justify-center ${
+                  isPlaying ? 'animate-[spin_14s_linear_infinite] shadow-accent/50' : ''
                 }`}
               >
                 {/* 黑胶底: 同心纹路（无封面时就是整张唱片的样子） */}
@@ -1270,8 +1272,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   }}
                 />
                 {/* 没有封面时的中心标签占位（与列表行的 coverGradient 风格一致） */}
-                <div className="relative w-[66%] h-[66%] rounded-full overflow-hidden shadow-inner border-2 border-neutral-700 bg-neutral-900 flex items-center justify-center">
-                  <div className="absolute inset-0 bg-gradient-to-tr from-rose-950 via-neutral-900 to-neutral-950 flex items-center justify-center text-rose-400 font-bold text-xl">
+                <div className="relative w-[66%] h-[66%] rounded-full overflow-hidden shadow-inner border-2 border-line-strong bg-surface flex items-center justify-center">
+                  <div className="absolute inset-0 bg-gradient-to-tr from-accent-dim via-surface to-app flex items-center justify-center text-accent font-bold text-xl">
                     🎵
                   </div>
                 </div>
@@ -1303,7 +1305,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   style={{ boxShadow: 'inset 0 0 26px rgba(0,0,0,0.6)', opacity: coverLoaded ? 1 : 0 }}
                 />
                 {/* Spindle center hole */}
-                <span className="absolute w-6 h-6 rounded-full bg-neutral-950 border-2 border-neutral-700/70" />
+                <span className="absolute w-6 h-6 rounded-full bg-app border-2 border-line-strong/70" />
               </div>
             </div>
           )}
@@ -1317,14 +1319,14 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 <span className="absolute inset-0 -z-10 bg-gradient-to-l from-black/60 via-black/25 to-transparent rounded-lg" />
               )}
               {lyricStatus === 'loading' && (
-                <div className="flex items-center gap-2 text-xs text-neutral-400">
+                <div className={`flex items-center gap-2 text-xs ${isVideo ? 'text-lyric-ink/70' : 'text-muted'}`}>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   <span>正在从网易云获取歌词…</span>
                 </div>
               )}
 
               {lyricStatus === 'none' && (
-                <div className="flex items-center gap-2 text-xs text-neutral-500">
+                <div className={`flex items-center gap-2 text-xs ${isVideo ? 'text-lyric-ink/60' : 'text-muted-2'}`}>
                   <Captions className="w-3.5 h-3.5" />
                   <span>网易云未找到「{currentTrack.title}」的歌词</span>
                 </div>
@@ -1348,9 +1350,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                           data-lyric-idx={i}
                           // 字号来自歌词设置(动态值用 inline style, 其余全部是 utility 类)
                           style={{ fontSize: d === 0 ? lyricFont + 3 : lyricFont }}
-                          className={`font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.5] tracking-[0.01em] text-white/34 [text-shadow:0_1px_6px_rgba(0,0,0,0.5)] transition-[color,opacity] duration-300 ${
+                          className={`font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.5] tracking-[0.01em] ${isVideo ? 'text-lyric-ink/34 [text-shadow:0_1px_6px_rgba(0,0,0,0.55)]' : 'text-ink/34 [text-shadow:var(--lyric-shadow)]'} transition-[color,opacity] duration-300 ${
                             d === 0
-                              ? 'text-white font-semibold pl-2.5 border-l-2 border-rose-500/55 [text-shadow:0_1px_8px_rgba(0,0,0,0.6),0_0_22px_rgba(244,63,94,0.2)]'
+                              ? isVideo
+                                ? 'text-lyric-ink font-semibold pl-2.5 border-l-2 border-accent/55 [text-shadow:0_1px_8px_rgba(0,0,0,0.6),0_0_22px_var(--lyric-glow)]'
+                                : 'text-ink font-semibold pl-2.5 border-l-2 border-accent/55 [text-shadow:var(--lyric-shadow),0_0_22px_var(--lyric-glow)]'
                               : d < 0
                               ? 'opacity-50'
                               : 'opacity-[0.85]'
@@ -1358,7 +1362,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                         >
                           {line.text}
                           {trans && (
-                            <span className="mt-0.5 block text-[11px] leading-snug italic text-neutral-500">
+                            <span className="mt-0.5 block text-[11px] leading-snug italic text-muted-2">
                               {trans}
                             </span>
                           )}
@@ -1375,10 +1379,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
       {/* 歌词样式面板 — 字号 + (视频时) 歌词列宽度, 持久在 localStorage */}
       {showLyricSettings && (
-        <div className="absolute right-4 bottom-16 z-40 w-64 rounded-xl bg-neutral-950/85 border border-neutral-800 p-3 flex flex-col gap-2 shadow-2xl">
-          <div className="text-[11px] font-semibold text-neutral-300">歌词样式</div>
+        <div className="absolute right-4 bottom-16 z-40 w-64 rounded-xl bg-app/85 border border-line p-3 flex flex-col gap-2 shadow-2xl">
+          <div className="text-[11px] font-semibold text-ink-3">歌词样式</div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-neutral-500">字号</span>
+            <span className="text-[11px] text-muted-2">字号</span>
             {[12, 14, 17].map((v) => (
               <button
                 key={v}
@@ -1388,7 +1392,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   try { localStorage.setItem('fastmusic_lyric_font', String(v)); } catch {}
                 }}
                 className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
-                  lyricFont === v ? 'bg-rose-600/20 text-rose-300 border border-rose-500/40' : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                  lyricFont === v ? 'bg-accent/20 text-accent-soft border border-accent/40' : 'bg-surface-2 text-muted hover:text-ink'
                 }`}
               >
                 {v === 12 ? '小' : v === 14 ? '中' : '大'}
@@ -1397,7 +1401,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           </div>
           {isVideo && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-neutral-500">宽度</span>
+              <span className="text-[11px] text-muted-2">宽度</span>
               {[240, 340, 420].map((v) => (
                 <button
                   key={v}
@@ -1407,7 +1411,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                     try { localStorage.setItem('fastmusic_lyric_width', String(v)); } catch {}
                   }}
                   className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
-                    lyricWidth === v ? 'bg-rose-600/20 text-rose-300 border border-rose-500/40' : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                    lyricWidth === v ? 'bg-accent/20 text-accent-soft border border-accent/40' : 'bg-surface-2 text-muted hover:text-ink'
                   }`}
                 >
                   {v === 240 ? '窄' : v === 340 ? '标准' : '宽'}
@@ -1416,10 +1420,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             </div>
           )}
           {isVideo && effectiveLyricWidth < lyricWidth && (
-            <p className="text-[10px] text-neutral-500">舞台宽度有限，歌词列自动收窄到 {effectiveLyricWidth}px</p>
+            <p className="text-[10px] text-muted-2">舞台宽度有限，歌词列自动收窄到 {effectiveLyricWidth}px</p>
           )}
           {!showLyrics && (
-            <p className="text-[10px] text-neutral-500">歌词当前关闭 — 打开后设置生效</p>
+            <p className="text-[10px] text-muted-2">歌词当前关闭 — 打开后设置生效</p>
           )}
         </div>
       )}
@@ -1427,10 +1431,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       {/* 均衡器 (Equalizer) 面板 — 10段 Web Audio 均衡器，预设 + 手动调节 */}
       {/* 均衡器面板贴在控制胶囊上方(胶囊高约 84px + bottom-3), 避免重叠 */}
       {showEqPanel && (
-        <div className="absolute left-4 bottom-[104px] z-40 w-72 max-h-[calc(100%-112px)] overflow-y-auto rounded-xl bg-neutral-950/85 border border-neutral-800 p-3 flex flex-col gap-2 shadow-2xl">
+        <div className="absolute left-4 bottom-[104px] z-40 w-72 max-h-[calc(100%-112px)] overflow-y-auto rounded-xl bg-app/85 border border-line p-3 flex flex-col gap-2 shadow-2xl">
           {/* 面板 header: 标题 + 状态 + 手动/平 reset + 均衡器 on/off */}
           <div className="flex items-center justify-between">
-            <span className="text-xs text-neutral-200 flex items-center gap-1">
+            <span className="text-xs text-ink-2 flex items-center gap-1">
               <Sliders className="w-3.5 h-3.5" />
               均衡器 · {eqEnabled ? 'ON' : 'OFF'} · {eqPreset === 'manual' ? '手动' : EQ_PRESETS.find((p) => p.name === eqPreset)?.label || '平'}
             </span>
@@ -1438,14 +1442,14 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               <button
                 onClick={(e) => { e.stopPropagation(); toggleEqEnabled(); }}
                 title="均衡器 开/关"
-                className="p-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-2xs"
+                className="p-1 rounded-md bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink text-2xs"
               >
                 {eqEnabled ? '关' : '开'}
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); resetEq(); }}
                 title="重置均衡器 (平)"
-                className="p-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-2xs"
+                className="p-1 rounded-md bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink text-2xs"
               >
                 平
               </button>
@@ -1461,8 +1465,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 title={`预设: ${p.label}`}
                 className={`p-1 rounded-md text-2xs transition-colors ${
                   eqPreset === p.name
-                    ? 'bg-rose-500/20 text-rose-400 border border-rose-400/60'
-                    : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white'
+                    ? 'bg-accent/20 text-accent border border-accent/60'
+                    : 'bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink'
                 }`}
               >
                 {p.label}
@@ -1480,17 +1484,17 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                     onMouseDown={(e) => { eqDraggingRef.current = true; handleEqScrub(i)(e); }}
                     onMouseMove={(e) => { if (eqDraggingRef.current) handleEqScrub(i)(e); }}
                     onMouseUp={(e) => { eqDraggingRef.current = false; }}
-                    className="relative w-1.5 h-24 rounded-full bg-neutral-700 cursor-pointer"
+                    className="relative w-1.5 h-24 rounded-full bg-elevated cursor-pointer"
                   >
                     {/* 0dB 基准线 */}
-                    <div className="absolute w-2.5 h-0.5 bg-neutral-500 pointer-events-none top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2" />
+                    <div className="absolute w-2.5 h-0.5 bg-muted-2 pointer-events-none top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2" />
                     {/* slider handle 位置 = 当前 dB */}
                     <div
-                      className="absolute w-4 h-2 rounded bg-rose-500 shadow pointer-events-none left-1/2 -translate-x-1/2"
+                      className="absolute w-4 h-2 rounded bg-accent shadow pointer-events-none left-1/2 -translate-x-1/2"
                       style={{ bottom: `${pct * 100}%` }}
                     />
                   </div>
-                  <span className="text-2xs text-neutral-400" title={`频段: ${EQ_BAND_FULL_LABELS[i]}`}>{EQ_BAND_LABELS[i]}</span>
+                  <span className="text-2xs text-muted" title={`频段: ${EQ_BAND_FULL_LABELS[i]}`}>{EQ_BAND_LABELS[i]}</span>
                 </div>
               );
             })}
@@ -1502,7 +1506,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           隐藏 (opacity-0) 时画面直接透出。做成居中的半透明胶囊(backdrop-blur + 细边框),
           而不是整条近纯黑渐变 —— 全屏时那条 108px 的渐变会被看成画面下方的"大黑边" */}
       <div
-        className={`absolute bottom-3 left-1/2 -translate-x-1/2 z-30 w-full max-w-[min(100%,900px)] rounded-xl bg-neutral-900/45 border border-neutral-700/40 backdrop-blur-md shadow-2xl px-3 py-2 transition-opacity duration-300 ${
+        className={`absolute bottom-3 left-1/2 -translate-x-1/2 z-30 w-full max-w-[min(100%,900px)] rounded-xl bg-pill border border-line-strong/40 backdrop-blur-md shadow-2xl px-3 py-2 transition-opacity duration-300 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -1516,29 +1520,29 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           onMouseLeave={handleProgressMouseLeave}
         >
           {/* Track background */}
-          <div className="relative w-full h-1.5 group-hover:h-2.5 rounded-full bg-neutral-800 transition-all overflow-hidden">
+          <div className="relative w-full h-1.5 group-hover:h-2.5 rounded-full bg-surface-2 transition-all overflow-hidden">
             {/* Buffered bar */}
             <div
-              className="absolute left-0 top-0 bottom-0 bg-neutral-700/60 transition-all duration-200"
+              className="absolute left-0 top-0 bottom-0 bg-elevated/60 transition-all duration-200"
               style={{ width: `${Math.min(100, bufferPercent)}%` }}
             />
             {/* Played bar */}
             <div
-              className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-rose-600 to-rose-400"
+              className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-accent to-accent"
               style={{ width: `${Math.min(100, progressPercent)}%` }}
             />
           </div>
 
           {/* Draggable Scrubber Thumb */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 group-hover:w-4 group-hover:h-4 bg-white rounded-full shadow-lg border-2 border-rose-500 -ml-2 pointer-events-none transition-transform"
+            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 group-hover:w-4 group-hover:h-4 bg-surface rounded-full shadow-lg border-2 border-accent -ml-2 pointer-events-none transition-transform"
             style={{ left: `${progressPercent}%` }}
           />
 
           {/* Hover Time Tooltip */}
           {hoverTime !== null && (
             <div
-              className="absolute -top-7 -translate-x-1/2 px-2 py-0.5 rounded bg-neutral-900 border border-neutral-700 text-[11px] font-mono text-neutral-200 pointer-events-none shadow-md"
+              className="absolute -top-7 -translate-x-1/2 px-2 py-0.5 rounded bg-surface border border-line-strong text-[11px] font-mono text-ink-2 pointer-events-none shadow-md"
               style={{ left: `${hoverPosition}%` }}
             >
               {formatTime(hoverTime)}
@@ -1553,7 +1557,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <button
               onClick={onPrev}
               title="上一首 (Previous)"
-              className="p-2 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800/80 transition-colors"
+              className="p-2 rounded-full text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
             >
               <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
@@ -1561,7 +1565,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <button
               onClick={togglePlay}
               title={isPlaying ? '暂停 (Space)' : '播放 (Space)'}
-              className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg transition-transform active:scale-95"
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-accent hover:bg-accent text-white flex items-center justify-center shadow-lg transition-transform active:scale-95"
             >
               {isPlaying ? (
                 <Pause className="w-5 h-5" />
@@ -1573,15 +1577,15 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <button
               onClick={onNext}
               title="下一首 (Next)"
-              className="p-2 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800/80 transition-colors"
+              className="p-2 rounded-full text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
             >
               <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
             {/* Time Indicator */}
-            <div className="text-xs font-mono text-neutral-400 tabular-nums ml-1">
-              <span className="text-neutral-200 font-medium">{formatTime(currentTime)}</span>
-              <span className="mx-1 text-neutral-600">/</span>
+            <div className="text-xs font-mono text-muted tabular-nums ml-1">
+              <span className="text-ink-2 font-medium">{formatTime(currentTime)}</span>
+              <span className="mx-1 text-faint">/</span>
               <span>{formatTime(duration)}</span>
             </div>
           </div>
@@ -1593,7 +1597,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               <button
                 onClick={toggleMute}
                 title={isMuted ? '取消静音 (M)' : '静音 (M)'}
-                className="text-neutral-400 hover:text-white transition-colors"
+                className="text-muted hover:text-ink transition-colors"
               >
                 {isMuted || volume === 0 ? (
                   <VolumeX className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1609,7 +1613,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 step="0.05"
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
-                className="w-16 sm:w-20 h-1 accent-rose-500 bg-neutral-800 rounded-lg cursor-pointer"
+                className="w-16 sm:w-20 h-1 accent-accent bg-surface-2 rounded-lg cursor-pointer"
                 title={`音量: ${Math.round(volume * 100)}%${volumeBoost ? ' ×2 增强' : ''}`}
               />
 
@@ -1622,8 +1626,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 title={volumeBoost ? '音量增强 ×2 (已开启, 点击关闭)' : '音量增强 ×2 (音乐增强)'}
                 className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                   volumeBoost
-                    ? 'bg-rose-600 text-white shadow-sm'
-                    : 'text-neutral-400 hover:text-white hover:bg-neutral-800/60'
+                    ? 'bg-accent text-white shadow-sm'
+                    : 'text-muted hover:text-ink hover:bg-surface-2/60'
                 }`}
               >
                 ×2
@@ -1638,11 +1642,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   onToggleFavorite();
                 }}
                 title={isFavorited ? '已收藏 (点击取消收藏)' : '收藏当前曲目'}
-                className={`p-2 rounded-lg hover:bg-neutral-800/80 transition-colors cursor-pointer ${
-                  isFavorited ? 'text-rose-500' : 'text-neutral-400 hover:text-rose-400'
+                className={`p-2 rounded-lg hover:bg-surface-2/80 transition-colors cursor-pointer ${
+                  isFavorited ? 'text-accent' : 'text-muted hover:text-accent'
                 }`}
               >
-                <Heart className={`w-4 h-4 transition-transform active:scale-125 ${isFavorited ? 'fill-rose-500' : ''}`} />
+                <Heart className={`w-4 h-4 transition-transform active:scale-125 ${isFavorited ? 'fill-accent' : ''}`} />
               </button>
             )}
 
@@ -1658,12 +1662,12 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   ? '单曲循环'
                   : '随机播放'
               }`}
-              className={`p-2 rounded-lg hover:bg-neutral-800/80 transition-colors ${
+              className={`p-2 rounded-lg hover:bg-surface-2/80 transition-colors ${
                 playMode === 'loop-one'
-                  ? 'text-rose-400 font-bold'
+                  ? 'text-accent font-bold'
                   : playMode === 'shuffle'
-                  ? 'text-amber-400'
-                  : 'text-neutral-400 hover:text-white'
+                  ? 'text-amber'
+                  : 'text-muted hover:text-ink'
               }`}
             >
               {playMode === 'shuffle' ? (
@@ -1672,7 +1676,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 <div className="relative">
                   <Repeat className="w-4 h-4" />
                   {playMode === 'loop-one' && (
-                    <span className="absolute -top-1.5 -right-2 text-[9px] font-bold text-rose-400">1</span>
+                    <span className="absolute -top-1.5 -right-2 text-[9px] font-bold text-accent">1</span>
                   )}
                 </div>
               )}
@@ -1682,19 +1686,19 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <div className="relative">
               <button
                 onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                className="px-2 py-1 rounded bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-xs font-mono text-neutral-300 hover:text-white transition-colors"
+                className="px-2 py-1 rounded bg-surface hover:bg-surface-2 border border-line-strong text-xs font-mono text-ink-3 hover:text-ink transition-colors"
               >
                 {playbackRate}x
               </button>
 
               {showSpeedMenu && (
-                <div className="absolute bottom-9 right-0 py-1.5 w-24 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl flex flex-col z-50 text-xs">
+                <div className="absolute bottom-9 right-0 py-1.5 w-24 bg-surface border border-line-strong rounded-xl shadow-2xl flex flex-col z-50 text-xs">
                   {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
                     <button
                       key={rate}
                       onClick={() => setSpeed(rate)}
-                      className={`px-3 py-1.5 text-left font-mono hover:bg-neutral-800 transition-colors ${
-                        playbackRate === rate ? 'text-rose-400 font-bold bg-neutral-800/50' : 'text-neutral-300'
+                      className={`px-3 py-1.5 text-left font-mono hover:bg-surface-2 transition-colors ${
+                        playbackRate === rate ? 'text-accent font-bold bg-surface-2/50' : 'text-ink-3'
                       }`}
                     >
                       {rate.toFixed(2).replace(/\.00$/, '')}x
@@ -1708,7 +1712,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <button
               onClick={toggleFullscreen}
               title={isFullscreen ? '退出全屏 (F)' : '全屏播放 (F)'}
-              className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800/80 transition-colors"
+              className="p-2 rounded-lg text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
             >
               {isFullscreen ? (
                 <Minimize2 className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1722,8 +1726,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               <button
                 onClick={onToggleTheater}
                 title={isTheaterMode ? '退出剧场模式' : '剧场宽屏模式'}
-                className={`p-2 rounded-lg hover:bg-neutral-800/80 transition-colors ${
-                  isTheaterMode ? 'text-rose-400' : 'text-neutral-400 hover:text-white'
+                className={`p-2 rounded-lg hover:bg-surface-2/80 transition-colors ${
+                  isTheaterMode ? 'text-accent' : 'text-muted hover:text-ink'
                 }`}
               >
                 <Tv className="w-4 h-4" />
@@ -1737,8 +1741,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 toggleLyrics();
               }}
               title={showLyrics ? '隐藏歌词 (L)' : '显示歌词 (L)'}
-              className={`p-2 rounded-lg hover:bg-neutral-800/80 transition-colors ${
-                showLyrics ? 'text-rose-400' : 'text-neutral-400 hover:text-white'
+              className={`p-2 rounded-lg hover:bg-surface-2/80 transition-colors ${
+                showLyrics ? 'text-accent' : 'text-muted hover:text-ink'
               }`}
             >
               <Captions className="w-4 h-4" />
@@ -1751,8 +1755,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 setShowLyricSettings((v) => !v);
               }}
               title="歌词字号与宽度"
-              className={`px-2 py-1 rounded-lg text-[11px] font-semibold hover:bg-neutral-800/80 transition-colors ${
-                showLyricSettings ? 'text-rose-400' : 'text-neutral-400 hover:text-white'
+              className={`px-2 py-1 rounded-lg text-[11px] font-semibold hover:bg-surface-2/80 transition-colors ${
+                showLyricSettings ? 'text-accent' : 'text-muted hover:text-ink'
               }`}
             >
               Aa
@@ -1765,8 +1769,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 setShowEqPanel(!showEqPanel);
               }}
               title="均衡器 (Equalizer) 面板"
-              className={`p-2 rounded-lg hover:bg-neutral-800/80 transition-colors ${
-                showEqPanel ? 'text-rose-400' : 'text-neutral-400 hover:text-white'
+              className={`p-2 rounded-lg hover:bg-surface-2/80 transition-colors ${
+                showEqPanel ? 'text-accent' : 'text-muted hover:text-ink'
               }`}
             >
               <Sliders className="w-4 h-4" />

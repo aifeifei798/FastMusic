@@ -1,6 +1,114 @@
-/* 样式全部走 Tailwind utility 类, 这里只保留两个 import:
+/* 样式全部走 Tailwind utility 类, 组件里只用语义 token(bg-app / bg-surface / text-ink ...),
+   不写硬编码的 neutral-950 / rose-400。深浅主题切换时只改下面的变量值, 不改组件类名:
+   Tailwind v4 的 utility 生成 `background-color: var(--color-app)`, 所以 [data-theme=light]
+   覆盖变量即可全局换肤。
    - tailwindcss: 所有 UI 样式(歌词、滚动条、光标、video.js 主题覆盖)都在组件里用
      utility / arbitrary variant 写, 不再手写规则。
    - video.js 官方样式表: video.js 的控件结构依赖它。 */
 @import "tailwindcss";
 @import "video.js/dist/video-js.css";
+
+/* ============ 主题令牌(深色 = 默认) ============
+   深色主题刻意带一点暖调(rose/amber), 与品牌徽标的渐变呼应;
+   浅色主题是 Apple 风: 近黑文字 + 白卡片 + hairline 边框 + 克制的 accent。 */
+@theme {
+  --color-app: #0d0d12;
+  --color-surface: #15151b;
+  --color-surface-2: #1d1d24;
+  --color-elevated: #262630;
+  --color-line: #2b2b34;
+  --color-line-strong: #3a3a45;
+  --color-line-soft: #1f1f26;
+  --color-ink: #f4f4f6;
+  --color-ink-2: #d3d3da;
+  --color-ink-3: #a3a3ad;
+  --color-muted: #8a8a94;
+  --color-muted-2: #6d6d77;
+  --color-faint: #45454f;
+  --color-accent: #ff5a72;
+  --color-accent-soft: #ffb2c1;
+  --color-accent-dim: #2b1418;
+  --color-amber: #ffc04a;
+  --color-amber-dim: #2a1e12;
+  --color-emerald: #34d399;
+  --color-emerald-dim: #12261f;
+  --color-sky: #60a5fa;
+  --color-sky-dim: #122030;
+  --color-danger: #f87171;
+  --color-danger-dim: #2b1214;
+  --color-purple: #a78bfa;
+  --color-purple-dim: #1d1730;
+  /* 播放舞台: 深色主题整块黑; 浅色主题舞台变浅, 但 <video> 视口仍保持深色(视频需要对比度) */
+  --color-stage: #0b0b12;
+  --color-viewport: #000000;
+  /* 黑胶唱片: 两个主题都是深色(唱片就该是黑的), 只是浅色主题下更偏近黑 */
+  --color-vinyl: #0b0b12;
+  /* 视频歌词的文字色: 歌词压在画面上(暗底 scrim), 所以两个主题都用浅色文字 */
+  --color-lyric-ink: #f4f4f6;
+  /* 控制胶囊: 悬浮在画面上, 深色主题是半透明暗玻璃, 浅色主题是半透明白玻璃 */
+  --color-pill: rgba(21, 21, 27, 0.45);
+}
+
+/* ============ 浅色主题覆盖 ============ */
+[data-theme="light"] {
+  --color-app: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f1f4;
+  --color-elevated: #e7e7ec;
+  --color-line: #d7d7de;
+  --color-line-strong: #c2c2cc;
+  --color-line-soft: #e8e8ee;
+  --color-ink: #1d1d1f;
+  --color-ink-2: #3c3c44;
+  --color-ink-3: #6c6c75;
+  --color-muted: #7d7d86;
+  --color-muted-2: #9b9ba4;
+  --color-faint: #c3c3cc;
+  --color-accent: #d63b55;
+  --color-accent-soft: #e56b83;
+  --color-accent-dim: #fdeef1;
+  --color-amber: #b0761f;
+  --color-amber-dim: #f7ecd8;
+  --color-emerald: #1f7a58;
+  --color-emerald-dim: #e4f2ea;
+  --color-sky: #1f6fb2;
+  --color-sky-dim: #e6f0f8;
+  --color-danger: #b03030;
+  --color-danger-dim: #f8e7e7;
+  --color-purple: #6b4bb8;
+  --color-purple-dim: #ece6f7;
+  --color-stage: #f2f2f4;
+  --color-viewport: #101014;
+  --color-vinyl: #16161c;
+  --color-pill: rgba(255, 255, 255, 0.72);
+}
+
+/* 非颜色变量: 滚动条 / 歌词阴影 / 背景光晕, 同样按主题切换 */
+:root {
+  --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+  --lyric-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+  --lyric-glow: rgba(255, 90, 114, 0.22);
+  --accent-glow: rgba(255, 90, 114, 0.12);
+  --amber-glow: rgba(255, 192, 74, 0.10);
+  --glow-opacity: 1;
+}
+
+[data-theme="light"] {
+  --scrollbar-thumb: rgba(0, 0, 0, 0.14);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.24);
+  --lyric-shadow: 0 1px 6px rgba(255, 255, 255, 0.7);
+  --lyric-glow: rgba(214, 59, 85, 0.25);
+  --accent-glow: rgba(214, 59, 85, 0.07);
+  --amber-glow: rgba(176, 118, 31, 0.06);
+  --glow-opacity: 0.7;
+}
+
+/* 页头后面的一层暖色光晕: 让深色/浅色页面都跟徽标的 rose→amber 渐变呼应。
+   放在 App.tsx 根节点的一个 fixed 层(-z-10)上。 */
+.theme-wash {
+  background:
+    radial-gradient(1100px 520px at 22% -8%, var(--accent-glow), transparent 62%),
+    radial-gradient(900px 460px at 78% -6%, var(--amber-glow), transparent 62%);
+  opacity: var(--glow-opacity);
+}
