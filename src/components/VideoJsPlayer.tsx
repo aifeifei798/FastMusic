@@ -138,6 +138,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   // every render with fresh currentIndex/playMode, so the ended handler must call the LATEST one.
   const onNextRef = useRef(onNext);
   onNextRef.current = onNext;
+  // 播放模式同理：init useEffect 的 deps 是 []，ended 处理器需要读最新的 playMode
+  const playModeRef = useRef(playMode);
+  playModeRef.current = playMode;
   // server metadata 里的真实时长（秒）。分片 MP4 下 Chrome 的 duration 先等于"已缓冲片段末尾"，
   // 必须用这个种子防止 durationchange 把真实时长覆盖成局部值。
   const seedDurationRef = useRef(0);
@@ -406,6 +409,17 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     });
     player.on('ended', () => {
       setIsPlaying(false);
+      // 单曲循环：回到开头重播，不请求"下一首"
+      if (playModeRef.current === 'loop-one') {
+        try {
+          player.currentTime(0);
+          player.play();
+          setIsPlaying(true);
+        } catch (e) {
+          // ignore
+        }
+        return;
+      }
       onNextRef.current();
     });
 

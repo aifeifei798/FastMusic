@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Play, 
-  Plus, 
   Film, 
   Music, 
   Search, 
@@ -32,7 +31,6 @@ interface LibraryViewProps {
   albums: AlbumSummary[];
   currentTrackId: string | null;
   onSelectTrack: (track: MediaItem) => void;
-  onAddToQueue: (track: MediaItem) => void;
   onScanClick: () => void;
   isScanning: boolean;
   selectedArtist: string | null;
@@ -63,7 +61,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   albums,
   currentTrackId,
   onSelectTrack,
-  onAddToQueue,
   onScanClick,
   isScanning,
   selectedArtist,
@@ -608,16 +605,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           </button>
                         )}
 
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onAddToQueue(track);
-                          }}
-                          title="添加到播放队列"
-                          className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
                       </div>
                     </div>
                   );
@@ -885,16 +872,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           </button>
                         )}
 
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onAddToQueue(track);
-                          }}
-                          title="添加到播放队列"
-                          className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
                       </div>
                     </div>
                   );

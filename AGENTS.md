@@ -164,6 +164,15 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   `onNext` prop. App recreates `handleNextTrack` every render with fresh `currentIndex`/`playMode`, so the `ended`
   handler MUST call `onNextRef.current()` (a `useRef` reassigned each render), NOT the captured `onNext` — otherwise
   it always seeks to a stale index and the queue never advances (list-repeat plays one song then stalls).
+- **播放序列 = 当前列表（没有独立"播放队列"）**: `App.tsx` 里 `playlist` 就是正在浏览的列表
+  (`isRadioMode ? radioQueue : libraryActiveTab === 'favorites' ? favorites : tracks`)，
+  `currentTrack` 是独立 state，`currentIndex` 只是它在 `playlist` 里的位置（`-1` = 不在当前列表，
+  例如切筛选后）。切筛选/搜索/加载更多/切标签时一个 effect 用 `findIndex` 重新锚定 `currentIndex`，
+  所以"下一首"永远是列表里的下一条（MTV 筛选 → 下一个 MV；音乐筛选 → 下一首歌；收藏标签 → 下一个收藏）。
+  `handleNextTrack` 播到列表末尾且 `hasMore` 时先 `handleLoadMore()` 再播新加载的第一条，不会回到开头。
+  `PlayQueueModal.tsx` 已删除，列表行的 "+" 按钮和头部的"播放队列"按钮都没有了。
+  `loop-one`（单曲循环）由 `VideoJsPlayer` 的 `ended` 处理器（读 `playModeRef`）`currentTime(0)+play()` 重播，
+  App 的 `handleNextTrack` 在 `loop-one` 时直接 return。
 - **Progress-bar scrub** (`VideoJsPlayer.tsx`): the scrub bar div wires `onMouseDown`/`onMove`/`onUp`/`onLeave`.
   `isDraggingProgress` MUST be reset on `onMouseUp` (`handleProgressScrubEnd`) AND `onMouseLeave` — if it's only
   set true on mousedown and never cleared, the `if (!isDraggingProgress)` guards in `handleProgressScrub` and the

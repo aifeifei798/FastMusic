@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, History, Trash2, Play, Film, Music, Plus, Search } from 'lucide-react';
+import { X, History, Trash2, Play, Film, Music, Search } from 'lucide-react';
 import { MediaItem, PlayHistoryItem } from '../types/media';
 
 interface PlayHistoryModalProps {
@@ -7,7 +7,6 @@ interface PlayHistoryModalProps {
   onClose: () => void;
   history: PlayHistoryItem[];
   onPlayTrack: (track: MediaItem) => void;
-  onAddToQueue: (track: MediaItem) => void;
   onRemoveItem: (trackId: string) => void;
   onClearHistory: () => void;
 }
@@ -17,7 +16,6 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
   onClose,
   history,
   onPlayTrack,
-  onAddToQueue,
   onRemoveItem,
   onClearHistory,
 }) => {
@@ -162,17 +160,6 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
                     <span className="text-[11px] font-mono text-neutral-500 tabular-nums">
                       {formatTimeAgo(item.playedAt)}
                     </span>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAddToQueue(item.track);
-                      }}
-                      title="添加到播放队列"
-                      className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-700/60 transition-colors opacity-0 group-hover:opacity-100"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
 
                     <button
                       onClick={(e) => {

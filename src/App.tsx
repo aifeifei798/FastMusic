@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   Tv, 
   Server, 
-  ListMusic, 
   RefreshCw, 
   Radio, 
   History,
@@ -14,7 +13,6 @@ import { MediaItem, ArtistSummary, AlbumSummary, PlayMode, PlayHistoryItem, Radi
 import { mediaApi } from './services/api';
 import { VideoJsPlayer } from './components/VideoJsPlayer';
 import { LibraryView } from './components/LibraryView';
-import { PlayQueueModal } from './components/PlayQueueModal';
 import { ServerConfigModal } from './components/ServerConfigModal';
 import { PlayHistoryModal } from './components/PlayHistoryModal';
 import { RadioStationBanner } from './components/RadioStationBanner';
@@ -62,9 +60,16 @@ export default function App() {
   });
 
   // Player state
-  const [queue, setQueue] = useState<MediaItem[]>([]);
-  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  // 播放序列 = 当前正在浏览的列表（曲目列表 / 收藏列表 / 电台随机池），
+  // 不再有独立的"播放队列"，所以不存在"下一首到底走队列还是走列表"的二选一问题。
+  const [currentTrack, setCurrentTrack] = useState<MediaItem | null>(null);
+  // 当前曲目在列表中的位置；-1 表示它不在当前列表里（例如切筛选后）
+  const [currentIndex, setCurrentIndex] = useState<number>(-1);
+  // 随心电台的随机池（电台模式下的"列表"）
+  const [radioQueue, setRadioQueue] = useState<MediaItem[]>([]);
   const [playMode, setPlayMode] = useState<PlayMode>('loop-all');
+  // 是否已经选过曲目（避免切筛选时把播放区重置成列表第一条）
+  const hasSelectionRef = useRef<boolean>(false);
   const [isTheaterMode, setIsTheaterMode] = useState<boolean>(false);
 
   // Radio mode state (随心电台)
@@ -73,7 +78,6 @@ export default function App() {
   const [radioFrequency, setRadioFrequency] = useState<string>('FM 102.4 MHz');
 
   // Modals state
-  const [isQueueModalOpen, setIsQueueModalOpen] = useState<boolean>(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState<boolean>(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState<boolean>(false);
@@ -102,21 +106,22 @@ export default function App() {
       setTotalTracks(trackData.total);
       setHasMore(trackData.has_more);
 
-      // If queue is empty, populate with first batch of tracks
-      if (queue.length === 0 && trackData.items.length > 0) {
-        setQueue(trackData.items);
+      // 首次加载时默认选中列表第一条（不自动播放，只是让播放区有内容）
+      if (!hasSelectionRef.current && trackData.items.length > 0) {
+        setCurrentTrack(trackData.items[0]);
         setCurrentIndex(0);
+        hasSelectionRef.current = true;
       }
     } catch (err) {
       console.error('Failed to load library data:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly, queue.length]);
+  }, [selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly]);
 
   // Load More Tracks on scroll near bottom (limit=30, offset=currentLength)
   const handleLoadMore = useCallback(async () => {
-    if (isLoadingMore || !hasMore) return;
+    if (isLoadingMore || !hasMore) return [];
     setIsLoadingMore(true);
     try {
       const moreData = await mediaApi.getTracks({
@@ -132,8 +137,10 @@ export default function App() {
       setTracks((prev) => [...prev, ...moreData.items]);
       setHasMore(moreData.has_more);
       setTotalTracks(moreData.total);
+      return moreData.items;
     } catch (err) {
       console.error('Failed to load more tracks:', err);
+      return [];
     } finally {
       setIsLoadingMore(false);
     }
@@ -152,8 +159,19 @@ export default function App() {
     loadData();
   }, [loadData]);
 
-  // Current track from queue
-  const currentTrack: MediaItem | null = queue.length > 0 ? queue[currentIndex] || null : null;
+  // 播放序列 = 当前正在浏览的列表（曲目列表 / 收藏列表 / 电台随机池）。
+  // 列表变化（切筛选、搜索、加载更多、切标签）时重新定位当前曲目在列表中的位置。
+  const playlist: MediaItem[] = isRadioMode
+    ? radioQueue
+    : libraryActiveTab === 'favorites'
+      ? favorites
+      : tracks;
+
+  useEffect(() => {
+    if (!currentTrack) return;
+    setCurrentIndex(playlist.findIndex((t) => t.id === currentTrack.id));
+  }, [playlist, currentTrack?.id]);
+
   const currentStreamUrl = currentTrack ? mediaApi.getStreamUrl(currentTrack) : '';
 
   // Record current track to history whenever it starts playing, saving up to 100 entries in localStorage
@@ -211,22 +229,11 @@ export default function App() {
     });
   }, []);
 
-  // Track selection and queue management
+  // 点击列表条目 = 从这一条开始播；"下一首/上一首"就是当前列表里的下一条/上一条
   const handleSelectTrack = (track: MediaItem) => {
-    const existingIdx = queue.findIndex((t) => t.id === track.id);
-    if (existingIdx !== -1) {
-      setCurrentIndex(existingIdx);
-    } else {
-      const newQueue = [...queue, track];
-      setQueue(newQueue);
-      setCurrentIndex(newQueue.length - 1);
-    }
-  };
-
-  const handleAddToQueue = (track: MediaItem) => {
-    if (!queue.some((t) => t.id === track.id)) {
-      setQueue([...queue, track]);
-    }
+    setCurrentTrack(track);
+    setCurrentIndex(playlist.findIndex((t) => t.id === track.id));
+    hasSelectionRef.current = true;
   };
 
   // Start Radio Mode: 进入电台即刻随机洗牌并自动起播
@@ -239,27 +246,28 @@ export default function App() {
     const randFreq = `FM ${(88 + Math.random() * 20).toFixed(1)} MHz`;
     setRadioFrequency(randFreq);
 
+    const pick = (pool: MediaItem[]) => {
+      if (pool.length === 0) return;
+      const idx = Math.floor(Math.random() * pool.length);
+      setRadioQueue(pool);
+      setCurrentIndex(idx);
+      setCurrentTrack(pool[idx]);
+      hasSelectionRef.current = true;
+    };
+
     try {
       const radioTracks = await mediaApi.getRadioTracks(channel, 50);
       if (radioTracks && radioTracks.length > 0) {
-        setQueue(radioTracks);
-        const randIdx = Math.floor(Math.random() * radioTracks.length);
-        setCurrentIndex(randIdx);
+        pick(radioTracks);
       } else if (tracks.length > 0) {
         let pool = tracks;
         if (channel === 'audio') pool = tracks.filter((t) => t.media_type === 'audio');
         if (channel === 'video') pool = tracks.filter((t) => t.media_type === 'video');
-        const candidatePool = pool.length > 0 ? pool : tracks;
-        setQueue(candidatePool);
-        const randIdx = Math.floor(Math.random() * candidatePool.length);
-        setCurrentIndex(randIdx);
+        pick(pool.length > 0 ? pool : tracks);
       }
     } catch (err) {
       console.warn('Radio launch fallback', err);
-      if (tracks.length > 0) {
-        setQueue(tracks);
-        setCurrentIndex(Math.floor(Math.random() * tracks.length));
-      }
+      pick(tracks);
     }
   }, [tracks]);
 
@@ -272,9 +280,10 @@ export default function App() {
     try {
       const radioTracks = await mediaApi.getRadioTracks(newChannel, 50);
       if (radioTracks.length > 0) {
-        setQueue(radioTracks);
-        const randIdx = Math.floor(Math.random() * radioTracks.length);
-        setCurrentIndex(randIdx);
+        const idx = Math.floor(Math.random() * radioTracks.length);
+        setRadioQueue(radioTracks);
+        setCurrentIndex(idx);
+        setCurrentTrack(radioTracks[idx]);
       }
     } catch (err) {
       console.warn('Channel switch error', err);
@@ -283,22 +292,23 @@ export default function App() {
 
   // 电台下一首 / 切台
   const handleNextRadioTrack = useCallback(async () => {
-    if (queue.length === 0) {
+    if (radioQueue.length === 0) {
       await startRadioMode(radioChannel);
       return;
     }
-    // 当电台队列即将播完时，在后台静默补充更多随机曲目，保持无限播放
-    if (currentIndex >= queue.length - 2) {
+    // 当电台随机池即将播完时，在后台静默补充更多随机曲目，保持无限播放
+    if (currentIndex >= radioQueue.length - 2) {
       mediaApi.getRadioTracks(radioChannel, 30).then((fresh) => {
-        setQueue((prev) => [...prev, ...fresh]);
+        setRadioQueue((prev) => [...prev, ...fresh]);
       }).catch(() => {});
     }
-    let nextIdx = Math.floor(Math.random() * queue.length);
-    if (queue.length > 1 && nextIdx === currentIndex) {
-      nextIdx = (currentIndex + 1) % queue.length;
+    let nextIdx = Math.floor(Math.random() * radioQueue.length);
+    if (radioQueue.length > 1 && nextIdx === currentIndex) {
+      nextIdx = (currentIndex + 1) % radioQueue.length;
     }
     setCurrentIndex(nextIdx);
-  }, [queue, currentIndex, radioChannel, startRadioMode]);
+    setCurrentTrack(radioQueue[nextIdx]);
+  }, [radioQueue, currentIndex, radioChannel, startRadioMode]);
 
   // 退出电台模式
   const handleExitRadio = () => {
@@ -330,55 +340,54 @@ export default function App() {
   }, [isRadioMode, startRadioMode, currentTrack, handleToggleFavorite]);
 
   const handlePrevTrack = () => {
-    if (queue.length === 0) return;
+    if (playlist.length === 0) return;
     if (isRadioMode) {
       handleNextRadioTrack();
       return;
     }
     if (playMode === 'shuffle') {
-      const randomIdx = Math.floor(Math.random() * queue.length);
-      setCurrentIndex(randomIdx);
-    } else {
-      const prevIdx = (currentIndex - 1 + queue.length) % queue.length;
-      setCurrentIndex(prevIdx);
+      const idx = Math.floor(Math.random() * playlist.length);
+      setCurrentIndex(idx);
+      setCurrentTrack(playlist[idx]);
+      return;
     }
+    // 当前曲目不在列表里时，"上一首"取列表最后一条
+    const idx = currentIndex < 0 ? playlist.length - 1 : (currentIndex - 1 + playlist.length) % playlist.length;
+    setCurrentIndex(idx);
+    setCurrentTrack(playlist[idx]);
   };
 
-  const handleNextTrack = () => {
-    if (queue.length === 0) return;
+  const handleNextTrack = async () => {
+    if (playlist.length === 0) return;
     if (isRadioMode) {
       handleNextRadioTrack();
       return;
     }
     if (playMode === 'loop-one') {
-      // re-trigger same index
-      setCurrentIndex(currentIndex);
-    } else if (playMode === 'shuffle') {
-      const randomIdx = Math.floor(Math.random() * queue.length);
-      setCurrentIndex(randomIdx);
-    } else {
-      const nextIdx = (currentIndex + 1) % queue.length;
-      setCurrentIndex(nextIdx);
+      // 单曲循环由 VideoJsPlayer 的 ended 处理（回到 0 重播），这里不做任何跳转
+      return;
     }
-  };
+    if (playMode === 'shuffle') {
+      const idx = Math.floor(Math.random() * playlist.length);
+      setCurrentIndex(idx);
+      setCurrentTrack(playlist[idx]);
+      return;
+    }
 
-  const handleRemoveFromQueue = (index: number) => {
-    const newQueue = queue.filter((_, idx) => idx !== index);
-    setQueue(newQueue);
-    if (index === currentIndex) {
-      if (newQueue.length > 0) {
-        setCurrentIndex(Math.min(currentIndex, newQueue.length - 1));
-      } else {
-        setCurrentIndex(0);
+    // 顺序/循环列表：播到当前列表末尾且还有下一页时，先加载下一页，
+    // 让"下一首"继续往下播而不是回到列表开头。
+    if (currentIndex >= playlist.length - 1 && hasMore && libraryActiveTab === 'tracks') {
+      const more = await handleLoadMore();
+      if (more && more.length > 0) {
+        setCurrentTrack(more[0]);
+        setCurrentIndex(tracks.length); // 新条目接在旧列表末尾之后
+        return;
       }
-    } else if (index < currentIndex) {
-      setCurrentIndex(currentIndex - 1);
     }
-  };
 
-  const handleClearQueue = () => {
-    setQueue([]);
-    setCurrentIndex(0);
+    const idx = currentIndex < 0 ? 0 : (currentIndex + 1) % playlist.length;
+    setCurrentIndex(idx);
+    setCurrentTrack(playlist[idx]);
   };
 
   const handleQuickScan = async () => {
@@ -513,19 +522,6 @@ export default function App() {
               {history.length > 0 && (
                 <span className="absolute -top-1 -right-1 px-1.5 min-w-4 text-[10px] font-mono font-bold bg-neutral-800 text-rose-300 border border-neutral-700 rounded-full text-center">
                   {history.length}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setIsQueueModalOpen(true)}
-              title="播放队列"
-              className="relative p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white transition-colors"
-            >
-              <ListMusic className="w-4 h-4" />
-              {queue.length > 0 && (
-                <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-4 text-[10px] font-mono font-bold bg-rose-600 text-white rounded-full text-center">
-                  {queue.length}
                 </span>
               )}
             </button>
@@ -666,7 +662,6 @@ export default function App() {
             albums={albums}
             currentTrackId={currentTrack?.id || null}
             onSelectTrack={handleSelectTrack}
-            onAddToQueue={handleAddToQueue}
             onScanClick={() => setIsServerModalOpen(true)}
             isScanning={isScanning}
             selectedArtist={selectedArtist}
@@ -727,22 +722,11 @@ export default function App() {
       </footer>
 
       {/* Modals */}
-      <PlayQueueModal
-        isOpen={isQueueModalOpen}
-        onClose={() => setIsQueueModalOpen(false)}
-        queue={queue}
-        currentIndex={currentIndex}
-        onSelectIndex={setCurrentIndex}
-        onRemoveTrack={handleRemoveFromQueue}
-        onClearQueue={handleClearQueue}
-      />
-
       <PlayHistoryModal
         isOpen={isHistoryModalOpen}
         onClose={() => setIsHistoryModalOpen(false)}
         history={history}
         onPlayTrack={handlePlayFromHistory}
-        onAddToQueue={handleAddToQueue}
         onRemoveItem={handleRemoveHistoryItem}
         onClearHistory={handleClearHistory}
       />
