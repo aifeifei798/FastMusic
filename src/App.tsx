@@ -518,7 +518,7 @@ export default function App() {
           {/* Zone 1: 品牌徽标 + wordmark */}
           <div className="flex items-center gap-2.5 shrink-0">
             <LogoMark className="w-8 h-8 rounded-lg shadow-md shadow-accent/40" />
-            <span className="text-base sm:text-lg font-bold tracking-tight text-ink whitespace-nowrap">
+            <span className="hidden sm:inline text-lg font-bold tracking-tight text-ink whitespace-nowrap">
               FastMusic
             </span>
           </div>
@@ -527,15 +527,15 @@ export default function App() {
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <button
               onClick={() => (isRadioMode ? handleExitRadio() : startRadioMode('all'))}
-              title={isRadioMode ? t('点击退出电台模式') : t('进入随心电台，随机连播')}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 ${
+              title={isRadioMode ? t('电台广播中 · 点击退出电台模式') : t('随心电台 · 随机连播')}
+              aria-label={t('随心电台')}
+              className={`p-2 rounded-xl border transition-all cursor-pointer shadow-sm active:scale-95 ${
                 isRadioMode
                   ? 'bg-gradient-to-r from-accent to-amber text-white border-accent shadow-accent/40'
                   : 'bg-surface hover:bg-surface-2 text-accent-soft hover:text-accent-soft border-line-strong/80'
               }`}
             >
-              <Radio className={`w-3.5 h-3.5 ${isRadioMode ? 'animate-pulse text-white' : 'text-accent'}`} />
-              <span>{isRadioMode ? t('电台广播中') : t('随心电台')}</span>
+              <Radio className={`w-4 h-4 ${isRadioMode ? 'animate-pulse' : ''}`} />
             </button>
 
             <button
@@ -589,19 +589,18 @@ export default function App() {
               onClick={handleToggleLang}
               title={lang === 'zh' ? t('切换到英文界面') : t('切换到中文界面')}
               aria-label={t('切换语言')}
-              className="px-2.5 py-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer flex items-center gap-1.5"
+              className="p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
             >
               <Globe className="w-4 h-4" />
-              <span className="text-[11px] font-semibold font-mono">{lang === 'zh' ? 'EN' : '中文'}</span>
             </button>
 
             <button
               onClick={() => setIsServerModalOpen(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-surface hover:bg-surface-2 border border-line text-xs font-medium text-ink-2 hover:text-ink transition-colors flex items-center gap-2 shadow-sm"
+              title={t('系统配置：扫描目录 / 全库缓存任务')}
+              aria-label={t('系统配置')}
+              className="p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
             >
-              <Server className="w-3.5 h-3.5 text-accent" />
-              <span className="hidden sm:inline">{t('系统配置')}</span>
-              <span className="sm:hidden">{t('配置')}</span>
+              <Server className="w-4 h-4 text-accent" />
             </button>
           </div>
         </div>
@@ -688,26 +687,30 @@ export default function App() {
             <LogoMark className="w-5 h-5 rounded-md" />
             <p>{t('© 2026 FastMusic · 本地媒体流与无损音乐中心')}</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setIsHistoryModalOpen(true)}
-              className="hover:text-accent transition-colors"
+              title={t('播放历史记录')}
+              aria-label={t('播放历史')}
+              className="p-1.5 rounded-lg hover:bg-surface hover:text-accent transition-colors"
             >
-              {t('播放历史')}
+              <History className="w-4 h-4" />
             </button>
-            <span aria-hidden="true" className="text-faint">·</span>
             <button
               onClick={() => setShowShortcutsModal(true)}
-              className="hover:text-accent transition-colors"
+              title={t('快捷键说明 (?)')}
+              aria-label={t('快捷键说明')}
+              className="p-1.5 rounded-lg hover:bg-surface hover:text-accent transition-colors"
             >
-              {t('快捷键说明')}
+              <Keyboard className="w-4 h-4" />
             </button>
-            <span aria-hidden="true" className="text-faint">·</span>
             <button
               onClick={() => setIsServerModalOpen(true)}
-              className="hover:text-ink-3 transition-colors"
+              title={t('系统配置：扫描目录 / 全库缓存任务')}
+              aria-label={t('系统配置')}
+              className="p-1.5 rounded-lg hover:bg-surface hover:text-ink-3 transition-colors"
             >
-              {t('系统配置')}
+              <Server className="w-4 h-4" />
             </button>
           </div>
         </div>

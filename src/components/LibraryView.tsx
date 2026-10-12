@@ -6,10 +6,12 @@ import {
   Search, 
   User, 
   Disc, 
+  ListMusic,
+  Layers,
   SlidersHorizontal,
   X,
   Database,
-  ArrowDownCircle,
+  ArrowUp,
   RefreshCw,
   CheckCircle2,
   Heart,
@@ -377,48 +379,55 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     <div className="w-full flex-1 min-h-0 flex flex-col gap-4">
       {/* Search & Top Action Bar */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        {/* Navigation Tabs — 标签精简, 把宽度让给搜索框 */}
+        {/* Navigation Tabs — 图标-only（文字在手机上会把工具栏挤成多行），数量在 title 里 */}
         <div className="flex items-center gap-1 p-1 bg-surface rounded-xl border border-line shrink-0">
           <button
             onClick={() => setActiveTab('tracks')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            title={t('曲目 {loaded}/{total}', { loaded: fmtNum(tracks.length), total: fmtNum(totalTracks) })}
+            aria-label={t('曲目')}
+            className={`p-2 rounded-lg transition-colors ${
               activeTab === 'tracks'
                 ? 'bg-surface-2 text-ink shadow-sm'
                 : 'text-muted hover:text-ink-2'
             }`}
           >
-            {t('曲目 {loaded}/{total}', { loaded: fmtNum(tracks.length), total: fmtNum(totalTracks) })}
+            <ListMusic className="w-4 h-4" />
           </button>
           <button
             onClick={() => setActiveTab('artists')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            title={t('歌手 {n}', { n: fmtNum(artists.length) })}
+            aria-label={t('歌手')}
+            className={`p-2 rounded-lg transition-colors ${
               activeTab === 'artists'
                 ? 'bg-surface-2 text-ink shadow-sm'
                 : 'text-muted hover:text-ink-2'
             }`}
           >
-            {t('歌手 {n}', { n: fmtNum(artists.length) })}
+            <User className="w-4 h-4" />
           </button>
           <button
             onClick={() => setActiveTab('albums')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            title={t('专辑 {n}', { n: fmtNum(albums.length) })}
+            aria-label={t('专辑')}
+            className={`p-2 rounded-lg transition-colors ${
               activeTab === 'albums'
                 ? 'bg-surface-2 text-ink shadow-sm'
                 : 'text-muted hover:text-ink-2'
             }`}
           >
-            {t('专辑 {n}', { n: fmtNum(albums.length) })}
+            <Disc className="w-4 h-4" />
           </button>
           <button
             onClick={() => setActiveTab('favorites')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+            title={t('收藏 {n}', { n: fmtNum(favorites.length) })}
+            aria-label={t('收藏')}
+            className={`p-2 rounded-lg transition-colors ${
               activeTab === 'favorites'
                 ? 'bg-surface-2 text-accent-soft shadow-sm border border-accent/30'
                 : 'text-muted hover:text-accent-soft'
             }`}
           >
-            <Heart className={`w-3.5 h-3.5 ${favorites.length > 0 ? 'fill-accent text-accent' : 'text-muted'}`} />
-            <span>{t('收藏 {n}', { n: fmtNum(favorites.length) })}</span>
+            <Heart className={`w-4 h-4 ${favorites.length > 0 ? 'fill-accent text-accent' : ''}`} />
           </button>
         </div>
 
@@ -449,39 +458,43 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <span className="text-[11px] font-mono text-muted-2 shrink-0">{t('命中 {n}', { n: totalTracks })}</span>
           )}
 
-          {/* Media Type Toggle */}
+          {/* Media Type Toggle — 图标-only（全部 / MTV / 音乐），文字在 title 里 */}
           <div className="flex items-center gap-1 p-1 bg-surface rounded-xl border border-line shrink-0">
             <button
               onClick={() => onFilterMediaType('all')}
-              className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
+              title={t('全部类型')}
+              aria-label={t('全部')}
+              className={`p-2 rounded-lg transition-colors ${
                 mediaTypeFilter === 'all'
                   ? 'bg-surface-2 text-ink'
                   : 'text-muted hover:text-ink'
               }`}
             >
-              {t('全部')}
+              <Layers className="w-4 h-4" />
             </button>
             <button
               onClick={() => onFilterMediaType('video')}
-              className={`px-2.5 py-1 text-xs rounded-lg flex items-center gap-1 transition-colors ${
+              title={t('只看 MTV / 视频')}
+              aria-label="MTV"
+              className={`p-2 rounded-lg transition-colors ${
                 mediaTypeFilter === 'video'
                   ? 'bg-accent-dim/80 text-accent-soft border border-accent-dim/60'
                   : 'text-muted hover:text-ink'
               }`}
             >
-              <Film className="w-3 h-3" />
-              MTV
+              <Film className="w-4 h-4" />
             </button>
             <button
               onClick={() => onFilterMediaType('audio')}
-              className={`px-2.5 py-1 text-xs rounded-lg flex items-center gap-1 transition-colors ${
+              title={t('只看音乐 / 音频')}
+              aria-label={t('音乐')}
+              className={`p-2 rounded-lg transition-colors ${
                 mediaTypeFilter === 'audio'
                   ? 'bg-accent-dim/80 text-accent-soft border border-accent-dim/60'
                   : 'text-muted hover:text-ink'
               }`}
             >
-              <Music className="w-3 h-3" />
-              {t('音乐')}
+              <Music className="w-4 h-4" />
             </button>
           </div>
 
@@ -491,21 +504,25 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <button
               onClick={() => setToolMenuOpen((v) => !v)}
               title={t('筛选与工具：只看已转码 / 只看有歌词 / 预取封面 / 预取歌词 / 行密度')}
-              className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
+              aria-label={t('筛选与工具')}
+              className={`p-2 rounded-lg border transition-colors flex items-center gap-1.5 ${
                 toolMenuOpen
                   ? 'bg-surface-2 text-ink border-line-strong'
                   : 'bg-surface text-muted border-line hover:text-ink'
               }`}
             >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>{t('筛选与工具')}</span>
+              <SlidersHorizontal className="w-4 h-4" />
               {(readyOnly || hasLyricsOnly) && (
                 <span className="flex items-center gap-1">
                   {readyOnly && (
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-dim/70 text-emerald text-[10px]">{t('已转码')}</span>
+                    <span title={t('已转码')} className="flex items-center">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald" />
+                    </span>
                   )}
                   {hasLyricsOnly && (
-                    <span className="px-1.5 py-0.5 rounded bg-sky-dim/70 text-sky text-[10px]">{t('有歌词')}</span>
+                    <span title={t('有歌词')} className="flex items-center">
+                      <Captions className="w-3.5 h-3.5 text-sky" />
+                    </span>
                   )}
                 </span>
               )}
@@ -918,10 +935,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
                   title={t('回到列表顶部')}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink transition-colors shrink-0 cursor-pointer"
+                  aria-label={t('回到顶部')}
+                  className="p-2 rounded-lg bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink transition-colors shrink-0 cursor-pointer"
                 >
-                  <ArrowDownCircle className="w-3.5 h-3.5 rotate-180" />
-                  <span>{t('回到顶部')}</span>
+                  <ArrowUp className="w-4 h-4" />
                 </button>
               </div>
             </>

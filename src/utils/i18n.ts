@@ -49,6 +49,10 @@ const EN: Record<string, string> = {
   '切换语言': 'Toggle language',
   '系统配置': 'System config',
   '配置': 'Config',
+  '电台广播中 · 点击退出电台模式': 'Radio live · click to exit radio mode',
+  '随心电台 · 随机连播': 'Radio · shuffle-play the library',
+  '系统配置：扫描目录 / 全库缓存任务':
+    'System config: scan directories & library-wide cache jobs',
   '© 2026 FastMusic · 本地媒体流与无损音乐中心':
     '© 2026 FastMusic · Local media streaming & lossless music hub',
   '播放历史': 'History',
@@ -101,6 +105,13 @@ const EN: Record<string, string> = {
   '命中 {n}': '{n} hits',
   '全部': 'All',
   '音乐': 'Audio',
+  '曲目': 'Tracks',
+  '歌手': 'Artists',
+  '专辑': 'Albums',
+  '收藏': 'Favorites',
+  '全部类型': 'All media types',
+  '只看 MTV / 视频': 'MTV / video only',
+  '只看音乐 / 音频': 'Audio only',
   '筛选与工具：只看已转码 / 只看有歌词 / 预取封面 / 预取歌词 / 行密度':
     'Filters & tools: transcoded only / lyrics only / prefetch covers / prefetch lyrics / row density',
   '筛选与工具': 'Filters & tools',
