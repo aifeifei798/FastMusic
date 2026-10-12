@@ -2,6 +2,8 @@
 
 本地音乐 / MTV 流媒体播放器。**React SPA + Express 媒体后端**,扫描本地音乐目录,通过 HTTP Range 流式播放,自带实时频谱可视化与 10 段均衡器。
 
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 ![FastMusic 正在播放 4K MTV — 久しぶりのリップグロス ⧸ AKB48 60th Single](docs/mtv-preview.png)
 
 > 截图: 4K AV1 `.mkv` MTV 经服务端 remux 成 WebM 后直接播放,右侧为网易云歌词竖列(当前行居中高亮)。
@@ -101,3 +103,7 @@ src/
 - 首次全量扫描较慢(music-metadata 逐文件解析);后续增量扫描很快。
 - 歌词来自网易云明文接口(`music.163.com/api/song/lyric`),服务端代理 + 缓存(`fastmusic_lyrics.json`,已 gitignore);本地曲库标题/歌手若与网易云不一致,可能匹配到翻唱版本或无歌词。
 - 无测试套件;`npm run lint` 即 `tsc --noEmit`。
+
+## 📄 许可
+
+Apache License 2.0。仓库只包含程序代码与文档截图,不含任何音乐 / 视频文件;索引 `fastmusic_db.json`、歌词缓存、转码缓存与日志均已 gitignore。
