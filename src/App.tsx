@@ -594,67 +594,8 @@ export default function App() {
             />
           </div>
 
-          {/* 正在播放信息条: 一行搞定（封面 + 标题/歌手 + 技术规格 + 收藏），不再占用整张卡片 */}
-          {currentTrack && (
-            <div className="flex flex-wrap items-center gap-3 px-3 py-2 bg-neutral-900/50 rounded-xl border border-neutral-800/60">
-              <div className="w-8 h-8 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center text-rose-400 overflow-hidden shrink-0">
-                {currentTrack.cover_url ? (
-                  <img
-                    src={currentTrack.cover_url}
-                    alt={currentTrack.title}
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <Tv className="w-4 h-4" />
-                )}
-              </div>
-
-              <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-sm text-neutral-100 truncate">{currentTrack.title}</span>
-                <span className="text-xs text-rose-400 font-medium truncate">{currentTrack.artist || '未知歌手'}</span>
-                {currentTrack.album && (
-                  <span className="text-[11px] text-neutral-500 truncate hidden sm:inline">{currentTrack.album}</span>
-                )}
-              </div>
-
-              {/* 技术规格 + 转码状态（接口 URL 只在 title 里, 不占版面） */}
-              <div className="flex items-center gap-2 text-[11px] font-mono text-neutral-400 shrink-0" title={currentTrack.stream_url}>
-                <span className="uppercase text-neutral-200">{currentTrack.ext}</span>
-                <span aria-hidden="true" className="text-neutral-600">·</span>
-                <span className="tabular-nums">{(currentTrack.file_size / (1024 * 1024)).toFixed(1)} MB</span>
-                {currentTrack.transcode && (
-                  <>
-                    <span aria-hidden="true" className="text-neutral-600">·</span>
-                    <span className={currentTrack.transcode.status === 'ready' ? 'text-emerald-400' : 'text-amber-400'}>
-                      {currentTrack.transcode.status === 'ready'
-                        ? `${currentTrack.transcode.container}`
-                        : `转码 ${currentTrack.transcode.status}`}
-                    </span>
-                  </>
-                )}
-              </div>
-
-              <button
-                onClick={() => handleToggleFavorite(currentTrack)}
-                title={favoriteIds.has(currentTrack.id) ? '点击取消收藏 (快捷键 S)' : '保存到收藏列表 (快捷键 S)'}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer shrink-0 ${
-                  favoriteIds.has(currentTrack.id)
-                    ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/50'
-                    : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white border border-neutral-700/80'
-                }`}
-              >
-                <Heart
-                  className={`w-3.5 h-3.5 transition-all duration-200 ${
-                    favoriteIds.has(currentTrack.id)
-                      ? 'fill-rose-500 text-rose-500 scale-110'
-                      : 'text-neutral-400 hover:text-rose-400'
-                  }`}
-                />
-                <span>{favoriteIds.has(currentTrack.id) ? '已收藏' : '收藏'}</span>
-              </button>
-            </div>
-          )}
+          {/* 「正在播放」信息条已删除: 歌名/歌手/专辑在舞台左列, 收藏按钮在控制胶囊里,
+              格式/转码状态在列表行里 —— 这一行是重复信息, 省下的空间全部给列表高度 */}
         </section>
 
         {/* ================= MEDIA LIBRARY BROWSER ================= */}

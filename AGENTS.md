@@ -237,6 +237,8 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   IntersectionObserver — an observer with `root=scrollBoxRef` always intersects and loads the WHOLE library into
   the DOM, blowing up memory. Root also has `overflow-hidden` so the page itself can never scroll. Don't
   reintroduce `min-h-screen`, unbounded list height, or an IntersectionObserver here.
+  播放器下方没有「正在播放」信息行（歌名/歌手/专辑在舞台左列，收藏按钮在控制胶囊里，格式与转码状态在
+  列表行里），省下的高度全部给 `flex-1` 的库区；不要把它加回来。
 - **Artists / Albums tabs batch-render**: all 6k artists / 15k albums are fetched at startup, but the grid only
   renders the first `artistLimit` / `albumLimit` cards (start 120, +120 when the grid scroll box nears the bottom
   via `handleGridScroll` + `gridBoxRef`), plus a 加载更多 button. The A-Z letter index and the toolbar search box
