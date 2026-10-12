@@ -28,7 +28,7 @@ Client SPA flow: `index.html` → `/src/main.tsx` → `src/App.tsx` (central UI 
 playback/library state). UI pieces live in `src/components/`.
 
 - **Audio graph is owned by `VideoJsPlayer.tsx`**, not the visualizer: the player wires
-  `source → 10 peaking BiquadFilters (均衡izer) → boostGain (×2 音量增强, localStorage
+  `source → 10 peaking BiquadFilters (均衡器) → boostGain (×2 音量增强, localStorage
   'fastmusic_boost') → analyser → destination` and publishes the
   analyser on `window._fastMusicAnalyser`. Default player volume is 70%. `AudioVisualizer.tsx` is a **pure consumer** — it
   reads `window._fastMusicAnalyser` fresh each render frame and never connects the media

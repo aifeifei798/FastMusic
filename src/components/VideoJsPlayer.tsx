@@ -31,14 +31,17 @@ import { AudioVisualizer, VisualizerMode } from './AudioVisualizer';
 import { mediaApi } from '../services/api';
 
 // --- 10段均衡器 (Equalizer) 配置 ---
-// 均衡izer 采用 audealize 的图形均衡izer 模型：N 个 "peaking" BiquadFilter 串联，
+// 均衡器 采用 audealize 的图形均衡器 模型：N 个 "peaking" BiquadFilter 串联，
 // 中心频率 logarithmically spaced，每个 filter.gain 直接为 dB。
 const EQ_BAND_FREQS: number[] = [20, 50, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-const EQ_BAND_LABELS: string[] = ['20Hz', '50Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', '16kHz'];
+// 面板显示用短标签: 长标签 (如 '125Hz') 会把 flex 列撑到 ~40px, 10 列总宽超过 w-72 面板,
+// 导致右侧 4 条溢出面板背景; 完整频率放在 title 提示里。
+const EQ_BAND_LABELS: string[] = ['20', '50', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
+const EQ_BAND_FULL_LABELS: string[] = ['20Hz', '50Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', '16kHz'];
 const EQ_MIN_DB = -20;
 const EQ_MAX_DB = 20;
 const EQ_PEAKING_Q = 4.31;
-// 预设均衡izer 曲线（dB，按 EQ_BAND_FREQS 顺序）
+// 预设均衡器 曲线（dB，按 EQ_BAND_FREQS 顺序）
 const EQ_PRESETS: { name: string; label: string; curve: number[] }[] = [
   { name: 'flat', label: '平', curve: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
   { name: 'rock', label: '摇滚', curve: [10, 7, 5, 3, -2, -3, -1, 1, 3, 4] },
@@ -165,7 +168,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       window.clearInterval(timer);
     };
   }, [needsTranscode, currentTrack]);
-  // --- 均衡izer state ---
+  // --- 均衡器 state ---
   // eqBands 持久在 localStorage('fastmusic_eq')，初始为预设 'flat'
   const [eqBands, setEqBands] = useState<number[]>(() => {
     try {
@@ -186,7 +189,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   const [showEqPanel, setShowEqPanel] = useState<boolean>(false);
   const [visualizerMode, setVisualizerMode] = useState<VisualizerMode>('bars');
 
-  // 均衡izer Web Audio 节点（由 player 拥有整个 audio graph）
+  // 均衡器 Web Audio 节点（由 player 拥有整个 audio graph）
   const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
   const boostGainRef = useRef<GainNode | null>(null);
   const eqInputRef = useRef<GainNode | null>(null);
@@ -334,7 +337,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     });
   }, [streamUrl, currentTrack?.id, transcodeTick]);
 
-  // --- 均衡izer: 拥有整个 audio graph (source -> 10 peaking biquad -> analyser -> destination) ---
+  // --- 均衡器: 拥有整个 audio graph (source -> 10 peaking biquad -> analyser -> destination) ---
   // 将当前 eqBands 到每个 filter.gain（peaking filter.gain 直接为 dB）
   const applyEqCurve = () => {
     const filters = eqFiltersRef.current;
@@ -351,7 +354,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     }
   };
 
-  // 构建均衡izer graph once the media element exists. 复用 shared AudioContext +
+  // 构建均衡器 graph once the media element exists. 复用 shared AudioContext +
   // MediaElementAudioSourceNode（WeakMap）与 AudioVisualizer 的约定。
   useEffect(() => {
     const el = videoRef.current;
@@ -430,7 +433,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     }
   }, [videoRef.current]);
 
-  // 将 eqBands/eqEnabled 到均衡izer gains whenever they change
+  // 将 eqBands/eqEnabled 到均衡器 gains whenever they change
   useEffect(() => {
     applyEqCurve();
   }, [eqBands, eqEnabled]);
@@ -631,7 +634,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     setShowSpeedMenu(false);
   };
 
-  // --- 均衡izer control handlers ---
+  // --- 均衡器 control handlers ---
   const applyEqPreset = (name: string) => {
     const curve = EQ_PRESET_BY_NAME[name];
     if (!curve) return;
@@ -652,7 +655,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     saveEq();
   };
 
-  // 均衡izer 垂直 slider 拖操作：从 pointer Y 计算 dB 值（top = max, bottom = min）
+  // 均衡器 垂直 slider 拖操作：从 pointer Y 计算 dB 值（top = max, bottom = min）
   const eqDraggingRef = useRef<boolean>(false);
   const handleEqScrub = (index: number) => (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -782,7 +785,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             </button>
           )}
 
-          {/* 均衡izer 视觉模式切换 — 音频曲目，与媒体标记同一行 */}
+          {/* 均衡器 视觉模式切换 — 音频曲目，与媒体标记同一行 */}
           {!isVideo && (
             <div className="flex items-center gap-1.5 p-1 rounded-xl bg-neutral-950/80 border border-neutral-800/80 backdrop-blur-md shadow-lg">
               <button
@@ -917,26 +920,26 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         )}
       </div>
 
-      {/* 均衡izer (Equalizer) 面板 — 10段 Web Audio 均衡izer，预设 + 手动调节 */}
+      {/* 均衡器 (Equalizer) 面板 — 10段 Web Audio 均衡器，预设 + 手动调节 */}
       {showEqPanel && (
         <div className="absolute left-4 bottom-16 z-40 w-72 rounded-xl bg-neutral-950/85 border border-neutral-800 p-3 flex flex-col gap-2 shadow-2xl">
-          {/* 面板 header: 标题 + 状态 + 手动/平 reset + 均衡izer on/off */}
+          {/* 面板 header: 标题 + 状态 + 手动/平 reset + 均衡器 on/off */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-neutral-200 flex items-center gap-1">
               <Sliders className="w-3.5 h-3.5" />
-              均衡izer · {eqEnabled ? 'ON' : 'OFF'} · {eqPreset === 'manual' ? '手动' : EQ_PRESETS.find((p) => p.name === eqPreset)?.label || '平'}
+              均衡器 · {eqEnabled ? 'ON' : 'OFF'} · {eqPreset === 'manual' ? '手动' : EQ_PRESETS.find((p) => p.name === eqPreset)?.label || '平'}
             </span>
             <div className="flex items-center gap-1">
               <button
                 onClick={(e) => { e.stopPropagation(); toggleEqEnabled(); }}
-                title="均衡izer 开/关"
+                title="均衡器 开/关"
                 className="p-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-2xs"
               >
                 {eqEnabled ? '关' : '开'}
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); resetEq(); }}
-                title="重置均衡izer (平)"
+                title="重置均衡器 (平)"
                 className="p-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-2xs"
               >
                 平
@@ -944,7 +947,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             </div>
           </div>
 
-          {/* 预设均衡izer 按钮 */}
+          {/* 预设均衡器 按钮 */}
           <div className="flex items-center gap-1 flex-wrap">
             {EQ_PRESETS.map((p) => (
               <button
@@ -962,7 +965,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             ))}
           </div>
 
-          {/* 10 段均衡izer 垂直 slider */}
+          {/* 10 段均衡器 垂直 slider */}
           <div className="flex items-stretch gap-1.5 w-full">
             {EQ_BAND_FREQS.map((freq, i) => {
               const pct = (eqBands[i] - EQ_MIN_DB) / (EQ_MAX_DB - EQ_MIN_DB);
@@ -982,7 +985,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                       style={{ bottom: `${pct * 100}%` }}
                     />
                   </div>
-                  <span className="text-2xs text-neutral-400">{EQ_BAND_LABELS[i]}</span>
+                  <span className="text-2xs text-neutral-400" title={`频段: ${EQ_BAND_FULL_LABELS[i]}`}>{EQ_BAND_LABELS[i]}</span>
                 </div>
               );
             })}
@@ -1221,13 +1224,13 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               </button>
             )}
 
-            {/* 均衡izer 面板开关 (moved from top bar) */}
+            {/* 均衡器 面板开关 (moved from top bar) */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setShowEqPanel(!showEqPanel);
               }}
-              title="均衡izer (Equalizer) 面板"
+              title="均衡器 (Equalizer) 面板"
               className={`p-2 rounded-lg hover:bg-neutral-800/80 transition-colors ${
                 showEqPanel ? 'text-rose-400' : 'text-neutral-400 hover:text-white'
               }`}
