@@ -1422,8 +1422,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       )}
 
       {/* 均衡器 (Equalizer) 面板 — 10段 Web Audio 均衡器，预设 + 手动调节 */}
+      {/* 均衡器面板贴在控制胶囊上方(胶囊高约 84px + bottom-3), 避免重叠 */}
       {showEqPanel && (
-        <div className="absolute left-4 bottom-16 z-40 w-72 rounded-xl bg-neutral-950/85 border border-neutral-800 p-3 flex flex-col gap-2 shadow-2xl">
+        <div className="absolute left-4 bottom-[104px] z-40 w-72 max-h-[calc(100%-112px)] overflow-y-auto rounded-xl bg-neutral-950/85 border border-neutral-800 p-3 flex flex-col gap-2 shadow-2xl">
           {/* 面板 header: 标题 + 状态 + 手动/平 reset + 均衡器 on/off */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-neutral-200 flex items-center gap-1">
@@ -1476,7 +1477,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                     onMouseDown={(e) => { eqDraggingRef.current = true; handleEqScrub(i)(e); }}
                     onMouseMove={(e) => { if (eqDraggingRef.current) handleEqScrub(i)(e); }}
                     onMouseUp={(e) => { eqDraggingRef.current = false; }}
-                    className="relative w-1.5 h-32 rounded-full bg-neutral-700 cursor-pointer"
+                    className="relative w-1.5 h-24 rounded-full bg-neutral-700 cursor-pointer"
                   >
                     {/* 0dB 基准线 */}
                     <div className="absolute w-2.5 h-0.5 bg-neutral-500 pointer-events-none top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2" />
@@ -1494,17 +1495,18 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         </div>
       )}
 
-      {/* Sleek Bottom Control Bar — absolute 悬浮在视频之上: 不占布局高度,
-          隐藏 (opacity-0) 时视频画面直接透出, 不会留下黑带 */}
+      {/* Sleek Bottom Control Bar — absolute 悬浮在画面之上: 不占布局高度,
+          隐藏 (opacity-0) 时画面直接透出。做成居中的半透明胶囊(backdrop-blur + 细边框),
+          而不是整条近纯黑渐变 —— 全屏时那条 108px 的渐变会被看成画面下方的"大黑边" */}
       <div
-        className={`absolute bottom-0 left-0 right-0 z-30 w-full bg-gradient-to-t from-neutral-950 via-neutral-950/95 to-transparent pt-6 pb-3 px-4 sm:px-6 transition-opacity duration-300 ${
+        className={`absolute bottom-3 left-1/2 -translate-x-1/2 z-30 w-full max-w-[min(100%,900px)] rounded-xl bg-neutral-900/45 border border-neutral-700/40 backdrop-blur-md shadow-2xl px-3 py-2 transition-opacity duration-300 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Interactive Scrubbing Progress Bar */}
         <div
-          className="relative group w-full h-5 flex items-center cursor-pointer select-none"
+          className="relative group w-full h-4 flex items-center cursor-pointer select-none"
           onMouseDown={handleProgressScrubStart}
           onMouseMove={handleProgressMouseMove}
           onMouseUp={handleProgressScrubEnd}
@@ -1542,7 +1544,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         </div>
 
         {/* Secondary Row: Playback Controls, Time, Volume, Speed, Fullscreen */}
-        <div className="flex items-center justify-between gap-3 mt-2">
+        <div className="flex items-center justify-between gap-3 mt-1.5 flex-wrap">
           {/* Left Controls: Prev, Play/Pause, Next & Time */}
           <div className="flex items-center gap-2 sm:gap-4">
             <button

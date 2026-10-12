@@ -164,6 +164,10 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   实际列宽是 `effectiveLyricWidth = max(200, min(lyricWidth, round(stageWidth * 0.26)))`（`stageWidth` = 舞台容器宽 − `lyricRightInset`），
   所以剧场模式画面窄时歌词列自动收窄，全屏时保持用户选择；面板在被封顶时显示「舞台宽度有限，歌词列自动收窄到 Npx」。
   开关是控制栏的 Captions 按钮或 `L` 键，持久在 `localStorage('fastmusic_lyrics')`（默认开启）。
+- **底部控制栏是悬浮胶囊**（`VideoJsPlayer.tsx`）: `absolute bottom-3 left-1/2 -translate-x-1/2 w-full max-w-[min(100%,900px)] rounded-xl bg-neutral-900/45 backdrop-blur-md`，
+  不占布局高度。之前是整条 `bg-gradient-to-t from-neutral-950` 的 108px 近纯黑带，全屏时会被看成
+  画面下方的"大黑边"。均衡器面板因此锚定在 `bottom-[104px]`（胶囊高约 84px + bottom-3）并加
+  `max-h-[calc(100%-112px)] overflow-y-auto`，slider 高度 `h-24`，否则短舞台（~335px）里面板会被裁掉。
 - **全屏沉浸隐藏鼠标指针**: 控制栏自动隐藏（播放中 3.5s 无鼠标移动 / 鼠标离开播放区）后，
   全屏视频时播放视口 div 的条件 utility 类切成 `cursor-none`（`VideoJsPlayer.tsx`），
   video.js 的 wrapper/`<video>` 继承该值，所以不再需要 `.cursor-none` 的后代覆盖规则。
