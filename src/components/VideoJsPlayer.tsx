@@ -454,8 +454,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     const isVideo = currentTrack?.media_type === 'video';
     // .webm 是视频容器：始终给 video/webm 让 <video>/video.js 走视频 tech，
     // 音频-only webm 仍解码（videoWidth=0），真正 video webm 显示画面。
-    // .mkv: server 已把源转成 WebM(VP9+Opus) 侧车文件（本机 Chrome 跳过 VA-API 硬解，
-    // MP4/H.264 会黑屏有声，故统一转 WebM），所以这里同样走 video/webm。
+    // .mkv: server 用 sidecar 侧车文件（源旁 foo.mkv.webm / foo.mkv.mp4）无损 remux，
+    // Chrome 没有 Matroska demuxer，所以必须换容器。type 只是 video.js 选 tech 的提示，
+    // 真正的容器由 Chrome 嗅探，所以这里给 video/webm 也能播 MP4 sidecar。
     const ext = currentTrack?.ext;
     const mime = isVideo
       ? (ext === '.mkv' || ext === '.webm' ? 'video/webm' : 'video/mp4')

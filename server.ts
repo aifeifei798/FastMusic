@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { parseFile } from 'music-metadata';
-import { execFileSync, spawn } from 'child_process';
+import { spawn } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,9 +51,9 @@ const DB_FILE = path.join(__dirname, 'fastmusic_db.json');
 
 // 本地媒体流服务端。核心难点：本机 Chrome 跳过 NVIDIA 的 VA-API 硬解设备，
 // MP4/H.264 走的正是这条被跳过的解码路径 → 黑屏有声。
-// 因此所有 .mkv 统一经下方的转码引擎转成 WebM(VP9+Opus) 侧车文件再流式播放。
+// 因此所有 .mkv 统一经下方的转码引擎转成 WebM 侧车文件再流式播放。
 // ============================================================
-// MKV → WebM(VP9+Opus) 转码引擎
+// MKV → WebM 转码引擎（AV1/VP9 源走无损 remux，其余走 VP9 重编码）
 // ============================================================
 // 为什么要转 WebM：本机 Chrome 跳过了 NVIDIA 的 VA-API 硬解设备
 // (vaapi_wrapper: "Should skip nVidia device named: nvidia-drm")，
@@ -91,8 +91,8 @@ type TranscodeStatus = 'queued' | 'running' | 'done' | 'error';
 
 interface TranscodeJob {
   srcPath: string;
-  outPath: string;
-  tmpPath: string;
+  outPath?: string; // 探测源编码后确定：AV1/VP9 → .mkv.webm，其余(h264/…) → .mkv.mp4
+  tmpPath?: string;
   srcMtime: number;
   srcSize: number;
   status: TranscodeStatus;
@@ -104,31 +104,93 @@ interface TranscodeJob {
   waiters: Array<() => void>;
 }
 
+// key = 源绝对路径
 const transcodeJobs = new Map<string, TranscodeJob>();
-let transcodeRunning = false;
-const transcodeQueue: string[] = [];
+let transcodeRunning = 0; // 正在跑的 ffmpeg 数量
+const transcodeQueue: string[] = []; // 源绝对路径队列
+// remux 是纯 I/O（CPU 几乎为零），可以并发；VP9 转码是 CPU 密集，并发反而拖慢
+const TRANCODE_CONCURRENCY = Math.max(1, parseInt(process.env.TRANCODE_CONCURRENCY || '3', 10));
 
-// sidecar 以 .webm 结尾（ext='.webm'，且 .webm 在 AUDIO_EXTS 里），
-// 扫描器必须据此跳过，否则转好的片子会被当成音频入库。
-const MKV_SIDECAR_SUFFIX = '.mkv.webm';
+// sidecar 可能是 foo.mkv.webm 或 foo.mkv.mp4，扫描器必须跳过，
+// 否则转好的片子会被当成音频/视频重新入库污染曲库。
+const MKV_SIDECAR_SUFFIXES = ['.mkv.webm', '.mkv.mp4'];
+// 相对源路径的产物后缀（foo.mkv + '.webm' = foo.mkv.webm）
+const SIDECAR_OUT_EXTS = ['.webm', '.mp4'];
 
-function sidecarPaths(srcPath: string): { outPath: string; tmpPath: string } {
-  return { outPath: `${srcPath}.webm`, tmpPath: `${srcPath}.fastmusic.tmp` };
+function isSidecarFile(name: string): boolean {
+  return MKV_SIDECAR_SUFFIXES.some((s) => name.endsWith(s));
 }
 
-function isSidecarFresh(outPath: string, srcMtime: number, srcSize: number): boolean {
-  try {
-    const st = fs.statSync(outPath);
-    if (st.size === 0) return false;
-    if (st.mtimeMs < srcMtime) return false;
-    return true;
-  } catch { return false; }
+// 已存在且不比源文件旧的 sidecar → 直接复用
+function findFreshSidecar(srcPath: string, srcMtime: number): string | undefined {
+  for (const ext of SIDECAR_OUT_EXTS) {
+    const cand = srcPath + ext;
+    try {
+      const st = fs.statSync(cand);
+      if (st.size > 0 && st.mtimeMs >= srcMtime) return cand;
+    } catch { /* 不存在 */ }
+  }
+  return undefined;
 }
 
-function buildFfmpegArgs(srcPath: string, tmpPath: string): string[] {
+// Chrome 的 libwebm demuxer 能解 AV1/VP9（实测本机 headless+真实 Chrome 都出画面，
+// 且 seek 正常），所以这两类源只需 **无损 remux**（-c copy，秒级）而不是 VP9 重编码。
+// 只有 h264/hevc/mpeg4 这类 webm 不接受的视频编码才走 libvpx-vp9 转码。
+const WEBM_NATIVE_CODECS = new Set(['av1', 'vp9']);
+// 本机 Chrome 实测能解 H.264 MP4（黑屏结论已推翻），所以 h264 源也只需无损 remux 到 MP4。
+const MP4_NATIVE_CODECS = new Set(['h264', 'hevc']);
+
+// 异步探测源的视频/音频编码（不阻塞事件循环）。失败返回 undefined → 走转码兜底。
+function probeCodecsAsync(srcPath: string): Promise<{ video?: string; audio?: string } | undefined> {
+  return new Promise((resolve) => {
+    let out = '';
+    const p = spawn('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'stream=codec_type,codec_name',
+      '-of', 'csv=p=0',
+      srcPath,
+    ]);
+    const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 15000);
+    p.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+    p.on('error', () => { clearTimeout(timer); resolve(undefined); });
+    p.on('close', () => {
+      clearTimeout(timer);
+      let video: string | undefined;
+      let audio: string | undefined;
+      for (const line of out.split('\n')) {
+        const parts = line.split(',').map((s) => s.trim().toLowerCase());
+        if (parts.length < 2) continue;
+        // ffprobe 字段顺序是 codec_name,codec_type（如 "av1,video"），保险起见两边都认
+        const type = parts[0] === 'video' || parts[0] === 'audio' ? parts[0] : parts[1];
+        const codec = parts[0] === type ? parts[1] : parts[0];
+        if (type === 'video' && !video) video = codec;
+        else if (type === 'audio' && !audio) audio = codec;
+      }
+      if (!video && !audio) resolve(undefined);
+      else resolve({ video, audio });
+    });
+  });
+}
+
+function buildFfmpegArgs(
+  srcPath: string,
+  tmpPath: string,
+  codecs: { video?: string; audio?: string } | undefined,
+  container: 'webm' | 'mp4',
+  remux: boolean
+): string[] {
+  const base = ['-y', '-hide_banner', '-nostdin', '-i', srcPath];
+
+  if (remux) {
+    // 无损 remux：视频/音频流原封不动，只是换容器 → 秒级完成
+    const args = [...base, '-map', '0:v:0'];
+    if (codecs && codecs.audio) args.push('-map', '0:a:0');
+    args.push('-c', 'copy', '-f', container, '-progress', 'pipe:2', '-nostats', tmpPath);
+    return args;
+  }
+
   return [
-    '-y', '-hide_banner', '-nostdin',
-    '-i', srcPath,
+    ...base,
     '-map', '0:v:0', '-map', '0:a:0',
     // deadline good: VP9 离线编码默认 best 极慢(实测 3x 实时), good 快约一倍,
     // crf 33 下画质差异对 MTV 播放几乎不可见
@@ -141,67 +203,97 @@ function buildFfmpegArgs(srcPath: string, tmpPath: string): string[] {
   ];
 }
 
-function pumpTranscodeQueue(): void {
-  if (transcodeRunning) return;
-  const outPath = transcodeQueue.shift();
-  if (!outPath) return;
-  const job = transcodeJobs.get(outPath);
-  if (!job || job.status !== 'queued') { pumpTranscodeQueue(); return; }
-
-  transcodeRunning = true;
+function startTranscode(job: TranscodeJob): void {
+  transcodeRunning += 1;
   job.status = 'running';
   job.startedAt = Date.now();
-  console.log(`[Transcode] start ${path.basename(job.srcPath)}`);
 
-  const args = buildFfmpegArgs(job.srcPath, job.tmpPath);
-  const proc = spawn('ffmpeg', args);
-  let stderrTail = '';
+  void probeCodecsAsync(job.srcPath).then((codecs) => {
+    const video = codecs?.video;
+    // AV1/VP9 → WebM 无损 remux；H.264 → MP4 无损 remux；探测失败/其他 → VP9+Opus WebM 重编码
+    const container: 'webm' | 'mp4' | 'vp9' =
+      video && WEBM_NATIVE_CODECS.has(video) ? 'webm'
+      : video && MP4_NATIVE_CODECS.has(video) ? 'mp4'
+      : 'vp9';
+    job.outPath = job.srcPath + (container === 'mp4' ? '.mp4' : '.webm');
+    job.tmpPath = `${job.srcPath}.fastmusic.tmp`;
+    console.log(`[Transcode] start ${path.basename(job.srcPath)} [${container === 'vp9' ? '转码' : 'remux'}→${container === 'vp9' ? 'webm' : container} ${video || '?'}]`);
 
-  proc.stderr.on('data', (d: Buffer) => {
-    const s = d.toString();
-    stderrTail = (stderrTail + s).slice(-2000);
-    const m = s.match(/out_time_us=(\d+)/) || s.match(/out_time_ms=(\d+)/);
-    if (m) {
-      const us = parseInt(m[1], 10);
-      const sec = us / 1e6;
-      if (job.progressTotal && job.progressTotal > 0) {
-        job.progress = Math.min(99, Math.round((sec / job.progressTotal) * 100));
+    const args = buildFfmpegArgs(
+      job.srcPath,
+      job.tmpPath,
+      codecs,
+      container === 'vp9' ? 'webm' : container,
+      container !== 'vp9'
+    );
+    const proc = spawn('ffmpeg', args);
+    let stderrTail = '';
+
+    proc.stderr.on('data', (d: Buffer) => {
+      const s = d.toString();
+      stderrTail = (stderrTail + s).slice(-2000);
+      const m = s.match(/out_time_us=(\d+)/) || s.match(/out_time_ms=(\d+)/);
+      if (m) {
+        const us = parseInt(m[1], 10);
+        const sec = us / 1e6;
+        if (job.progressTotal && job.progressTotal > 0) {
+          job.progress = Math.min(99, Math.round((sec / job.progressTotal) * 100));
+        }
       }
-    }
-  });
+    });
 
-  proc.on('error', (err: Error) => {
-    job.status = 'error';
-    job.error = `spawn failed: ${err}`;
-    try { fs.unlinkSync(job.tmpPath); } catch {}
-    transcodeRunning = false;
-    notifyWaiters(job);
-    pumpTranscodeQueue();
-  });
-
-  proc.on('close', (code: number | null) => {
-    transcodeRunning = false;
-    if (code === 0) {
-      try {
-        fs.renameSync(job.tmpPath, job.outPath);
-        job.status = 'done';
-        job.progress = 100;
-        job.finishedAt = Date.now();
-        console.log(`[Transcode] done ${path.basename(job.srcPath)} (${job.finishedAt - (job.startedAt||0)}ms)`);
-      } catch (e: any) {
-        job.status = 'error';
-        job.error = `rename failed: ${e?.message || e}`;
-        try { fs.unlinkSync(job.tmpPath); } catch {}
-      }
-    } else {
+    proc.on('error', (err: Error) => {
       job.status = 'error';
-      job.error = `ffmpeg exit ${code}: ${stderrTail.slice(-400)}`;
-      try { fs.unlinkSync(job.tmpPath); } catch {}
-      console.error(`[Transcode] FAILED ${path.basename(job.srcPath)}: ${job.error}`);
-    }
-    notifyWaiters(job);
-    pumpTranscodeQueue();
+      job.error = `spawn failed: ${err}`;
+      try { fs.unlinkSync(job.tmpPath!); } catch {}
+      transcodeRunning -= 1;
+      notifyWaiters(job);
+      pumpTranscodeQueue();
+    });
+
+    proc.on('close', (code: number | null) => {
+      transcodeRunning -= 1;
+      if (code === 0) {
+        try {
+          fs.renameSync(job.tmpPath!, job.outPath!);
+          job.status = 'done';
+          job.progress = 100;
+          job.finishedAt = Date.now();
+          console.log(`[Transcode] done ${path.basename(job.srcPath)} (${job.finishedAt - (job.startedAt || 0)}ms)`);
+        } catch (e: any) {
+          job.status = 'error';
+          job.error = `rename failed: ${e?.message || e}`;
+          try { fs.unlinkSync(job.tmpPath!); } catch {}
+        }
+      } else {
+        job.status = 'error';
+        job.error = `ffmpeg exit ${code}: ${stderrTail.slice(-400)}`;
+        try { fs.unlinkSync(job.tmpPath!); } catch {}
+        console.error(`[Transcode] FAILED ${path.basename(job.srcPath)}: ${job.error}`);
+      }
+      notifyWaiters(job);
+      pumpTranscodeQueue();
+    });
   });
+}
+
+function pumpTranscodeQueue(): void {
+  while (transcodeRunning < TRANCODE_CONCURRENCY) {
+    const srcPath = transcodeQueue.shift();
+    if (!srcPath) return;
+    const job = transcodeJobs.get(srcPath);
+    if (!job || job.status !== 'queued') continue;
+    // 排队期间 sidecar 可能已经产出（例如同一文件被播放请求触发过）→ 直接标记完成
+    const fresh = findFreshSidecar(srcPath, job.srcMtime);
+    if (fresh) {
+      job.outPath = fresh;
+      job.status = 'done';
+      job.progress = 100;
+      notifyWaiters(job);
+      continue;
+    }
+    startTranscode(job);
+  }
 }
 
 function notifyWaiters(job: TranscodeJob): void {
@@ -228,22 +320,22 @@ function probeDurationAsync(filePath: string): Promise<number | undefined> {
 }
 
 function ensureTranscoded(srcPath: string, srcMtime: number, srcSize: number, knownDuration?: number): TranscodeJob {
-  const { outPath, tmpPath } = sidecarPaths(srcPath);
-  const existing = transcodeJobs.get(outPath);
+  const existing = transcodeJobs.get(srcPath);
   if (existing && (existing.status === 'queued' || existing.status === 'running')) {
     return existing; // 已在队列/在跑，直接复用
   }
-  if (isSidecarFresh(outPath, srcMtime, srcSize)) {
+  const fresh = findFreshSidecar(srcPath, srcMtime);
+  if (fresh) {
     const done: TranscodeJob = existing && existing.status === 'done' ? existing : {
-      srcPath, outPath, tmpPath, srcMtime, srcSize,
+      srcPath, outPath: fresh, srcMtime, srcSize,
       status: 'done', progress: 100, waiters: [],
     };
-    transcodeJobs.set(outPath, done);
+    transcodeJobs.set(srcPath, done);
     return done;
   }
-  // 新建 job（排队）
+  // 新建 job（排队）。outPath 在探测源编码后才确定（.mkv.webm 或 .mkv.mp4）
   const job: TranscodeJob = {
-    srcPath, outPath, tmpPath, srcMtime, srcSize,
+    srcPath, srcMtime, srcSize,
     status: 'queued', progress: 0, waiters: [],
   };
   // 进度分母 = 源时长。优先用扫描时已入库的 duration（零成本）；
@@ -257,8 +349,8 @@ function ensureTranscoded(srcPath: string, srcMtime: number, srcSize: number, kn
       }
     });
   }
-  transcodeJobs.set(outPath, job);
-  transcodeQueue.push(outPath);
+  transcodeJobs.set(srcPath, job);
+  transcodeQueue.push(srcPath);
   pumpTranscodeQueue();
   return job;
 }
@@ -269,8 +361,9 @@ function awaitSidecar(job: TranscodeJob, cb: () => void): void {
   job.waiters.push(cb);
 }
 
-// 后台预转码：把库里所有尚无侧车的 .mkv 排队转 WebM（小文件优先，单并发）。
-// 目的：MTV 首次播放不再黑屏干等几分钟；队列在空闲时逐步消化。
+// 后台预转码：把库里所有尚无侧车的 .mkv 排队（小文件优先，默认 3 并发）。
+// 绝大多数 .mkv 是 AV1+Opus，remux 秒级完成，所以队列几分钟就能消化完。
+// 目的：MTV 首次播放不再黑屏干等；队列在空闲时逐步消化。
 // 关闭：PRETRANCODE_MKV=0。
 function queueAllMkvTranscodes(): void {
   if (process.env.PRETRANCODE_MKV === '0') return;
@@ -278,7 +371,7 @@ function queueAllMkvTranscodes(): void {
   for (const item of MEDIA_DB.values()) {
     if (item.ext !== '.mkv' || !item.abs_path) continue;
     if (!fs.existsSync(item.abs_path)) continue;
-    if (isSidecarFresh(sidecarPaths(item.abs_path).outPath, item.mtime ?? 0, item.file_size)) continue;
+    if (findFreshSidecar(item.abs_path, item.mtime ?? 0)) continue;
     pending.push({ path: item.abs_path, mtime: item.mtime ?? 0, size: item.file_size, duration: item.duration });
   }
   if (pending.length === 0) return;
@@ -350,7 +443,38 @@ function generateId(relativePath: string): string {
   return crypto.createHash('md5').update(relativePath).digest('hex').substring(0, 12);
 }
 
-// Find all media files recursively
+// Find all media files recursively.
+// 优先用系统的 fdfind(fd)/find 做枚举：34k 文件只要 ~10s，比 Node 递归 readdirSync 快得多，
+// 也更省内存。工具不可用时才退回纯 JS 递归。
+function findMediaFilesFast(rootDir: string): Promise<string[]> {
+  const exts = [...ALL_MEDIA_EXTS].map((e) => e.slice(1));
+  return new Promise((resolve) => {
+    let p: ReturnType<typeof spawn>;
+    try {
+      p = spawn('fdfind', ['-H', '.', '-0', ...exts.flatMap((e) => ['-e', e]), '-t', 'f', rootDir]);
+    } catch {
+      resolve(findMediaFilesRecursively(rootDir));
+      return;
+    }
+    let buf = '';
+    let failed = false;
+    const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 180000);
+    p.stdout?.on('data', (d: Buffer) => { buf += d.toString(); });
+    p.stderr?.on('data', () => { failed = true; });
+    p.on('error', () => { failed = true; });
+    p.on('close', (code) => {
+      clearTimeout(timer);
+      if (failed || code !== 0 || buf.length === 0) {
+        console.warn(`[Scan] fdfind 不可用，退回 JS 递归枚举 (${code})`);
+        resolve(findMediaFilesRecursively(rootDir));
+        return;
+      }
+      const files = buf.split('\0').filter((f) => f && !isSidecarFile(path.basename(f)));
+      resolve(files);
+    });
+  });
+}
+
 function findMediaFilesRecursively(dir: string, collected: string[] = []): string[] {
   if (!fs.existsSync(dir)) return collected;
   try {
@@ -366,7 +490,7 @@ function findMediaFilesRecursively(dir: string, collected: string[] = []): strin
         const ext = path.extname(entry.name).toLowerCase();
         // 跳过转码引擎产出的 sidecar（foo.mkv.webm），
         // 否则会被当成 youtube-music 音频重新入库污染曲库。
-        const isMkvSidecar = entry.name.endsWith(MKV_SIDECAR_SUFFIX);
+        const isMkvSidecar = isSidecarFile(entry.name);
         if (!isMkvSidecar && ALL_MEDIA_EXTS.has(ext)) {
           collected.push(fullPath);
         }
@@ -381,19 +505,34 @@ function findMediaFilesRecursively(dir: string, collected: string[] = []): strin
 // ffprobe 兜底：music-metadata 不解析 Matroska 容器，所以 .mkv/.webm 视频拿不到时长。
 // 没有时长 → 前端进度条无法计算百分比（分片 MP4 下 Chrome 的 duration 只等于已缓冲片段末尾）。
 // 同时用作有效性检查：ffprobe 打不开（ok=false）说明文件损坏（下载不完整 / 不是真媒体）。
-function probeMediaWithFfprobe(filePath: string): { ok: boolean; duration?: number } {
-  try {
-    const out = execFileSync(
-      'ffprobe',
-      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filePath],
-      { timeout: 15000 }
-    ).toString().trim();
-    const d = parseFloat(out);
-    return { ok: true, duration: Number.isFinite(d) && d > 0 ? Math.round(d) : undefined };
-  } catch (err) {
-    console.warn(`[Warn] ffprobe 时长探测失败 ${filePath}:`, err);
-    return { ok: false };
-  }
+// 用 spawn 而非 execFileSync：扫描时每个文件都可能走到这里，同步阻塞会拖垮事件循环。
+function probeMediaWithFfprobe(filePath: string): Promise<{ ok: boolean; duration?: number }> {
+  return new Promise((resolve) => {
+    let p: ReturnType<typeof spawn>;
+    try {
+      p = spawn('ffprobe', [
+        '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        filePath,
+      ]);
+    } catch {
+      resolve({ ok: false });
+      return;
+    }
+    let out = '';
+    const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 15000);
+    p.stdout?.on('data', (d: Buffer) => { out += d.toString(); });
+    p.on('error', () => { clearTimeout(timer); resolve({ ok: false }); });
+    p.on('close', (code) => {
+      clearTimeout(timer);
+      const d = parseFloat(out.trim());
+      resolve({
+        ok: code === 0,
+        duration: Number.isFinite(d) && d > 0 ? Math.round(d) : undefined,
+      });
+    });
+  });
 }
 
 // Parse media metadata: first attempt ID3/Vorbis tags via music-metadata, then fall back to directory/filename parsing
@@ -440,7 +579,7 @@ async function parseMediaFileMetadata(
   //     ffprobe 也打不开 → 文件损坏（下载不完整 / 不是真媒体），扫描时剔除。
   let decodable = true;
   if (duration === undefined) {
-    const probe = probeMediaWithFfprobe(filePath);
+    const probe = await probeMediaWithFfprobe(filePath);
     duration = probe.duration;
     decodable = probe.ok;
   }
@@ -485,6 +624,10 @@ async function parseMediaFileMetadata(
 
 // Scans an array of directories, supporting mixed structures and file tags.
 // force=false → 增量：已入库且 (mtime,size) 未变更则 skip 重解析（去重）；force=true → 全重扫描
+// 元数据解析是扫描的真正瓶颈（music-metadata ~120ms/文件），枚举只要 ~10s。
+// 用 worker pool 并发解析（实测 8 并发 ≈ 5x 加速）。关闭并发：SCAN_CONCURRENCY=1。
+const SCAN_CONCURRENCY = Math.max(1, parseInt(process.env.SCAN_CONCURRENCY || '8', 10));
+
 async function scanMultipleLibraries(rootDirs: string[], force: boolean = false) {
   let totalAdded = 0;
   let taggedCount = 0;
@@ -500,10 +643,10 @@ async function scanMultipleLibraries(rootDirs: string[], force: boolean = false)
     }
 
     console.log(`[Scan] 正在扫描多媒体目录: ${trimmed}`);
-    const files = findMediaFilesRecursively(trimmed);
+    const files = await findMediaFilesFast(trimmed);
     console.log(`[Scan] 在 ${trimmed} 中发现了 ${files.length} 个媒体文件`);
 
-    for (const filePath of files) {
+    const processFile = async (filePath: string): Promise<void> => {
       try {
         const stats = fs.statSync(filePath);
         const ext = path.extname(filePath).toLowerCase();
@@ -516,7 +659,7 @@ async function scanMultipleLibraries(rootDirs: string[], force: boolean = false)
         const existing = MEDIA_DB.get(id);
         if (!force && existing && existing.mtime === stats.mtimeMs && existing.file_size === stats.size) {
           skippedCount++;
-          continue;
+          return;
         }
 
         const parsed = await parseMediaFileMetadata(filePath, trimmed);
@@ -525,7 +668,7 @@ async function scanMultipleLibraries(rootDirs: string[], force: boolean = false)
           console.warn(`[Skip] 文件无法解码（可能下载不完整），不入库: ${filePath}`);
           invalidCount++;
           if (existing) MEDIA_DB.delete(id);
-          continue;
+          return;
         }
         if (parsed.hasTag) taggedCount++;
         else pathParsedCount++;
@@ -547,7 +690,15 @@ async function scanMultipleLibraries(rootDirs: string[], force: boolean = false)
       } catch (err) {
         console.warn(`[Warn] 解析文件失败 ${filePath}:`, err);
       }
-    }
+    };
+
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < files.length) {
+        await processFile(files[cursor++]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, files.length) }, worker));
   }
 
   return {
@@ -585,7 +736,7 @@ function scanLibrary(rootDir: string) {
         const ext = path.extname(fileDirent.name).toLowerCase();
         // MKV 转码产出的侧车文件 (foo.mkv.webm) 不是独立曲目，必须跳过；
         // 否则一次转码就会往库里塞一条重复的音频条目。
-        if (fileDirent.name.endsWith(MKV_SIDECAR_SUFFIX)) continue;
+        if (isSidecarFile(fileDirent.name)) continue;
         if (!ALL_MEDIA_EXTS.has(ext)) continue;
 
         const filePath = path.join(albumPath, fileDirent.name);
@@ -956,7 +1107,7 @@ app.get('/api/stream/:id', (req: Request, res: Response) => {
     const job = ensureTranscoded(absPath, st.mtimeMs, st.size, item.duration);
 
     if (job.status === 'done') {
-      servePath = job.outPath;
+      servePath = job.outPath!;
     } else if (job.status === 'error') {
       res.status(500).json({ detail: `转码失败: ${job.error || '未知错误'}` });
       return;
@@ -977,7 +1128,8 @@ app.get('/api/stream/:id', (req: Request, res: Response) => {
         settled = true;
         clearTimeout(timer);
         if (job.status === 'done') {
-          serveFileWithRange(res, job.outPath, 'video/webm', req.headers.range);
+          const outExt = path.extname(job.outPath!).toLowerCase();
+          serveFileWithRange(res, job.outPath!, outExt === '.mp4' ? 'video/mp4' : 'video/webm', req.headers.range);
         } else {
           res.status(500).json({ detail: `转码失败: ${job.error || '未知错误'}` });
         }

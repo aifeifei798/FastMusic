@@ -65,8 +65,12 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   `POST /api/scan` is **incremental by default**: files already indexed whose `(mtimeMs,
   file_size)` are unchanged are **skipped** (no re-parse) — only new/changed files run the
   slow `music-metadata` `parseFile`. Pass `?force=1` or body `{"force":true}` to clear +
-  fully re-scan. `ServerMediaItem` gained an optional `mtime` field for this dedup. The
-  first full scan over ~34k files is still slow (music-metadata dominates); re-scans are fast.
+  fully re-scan. `ServerMediaItem` gained an optional `mtime` field for this dedup.
+  Enumeration is done by the system `fdfind` (fd) via `findMediaFilesFast()` — `fdfind -H . -0
+  -e <ext>… -t f <dir>`, NUL-separated, sidecars filtered by `isSidecarFile()` — with a JS
+  recursive `readdirSync` fallback if fd is missing. Parsing is the real cost (~120ms/file), so
+  `scanMultipleLibraries` runs a worker pool of `SCAN_CONCURRENCY` (default 8, ~5x faster).
+  An incremental re-scan of the 34k-file library is ~20s.
 - **Corrupt/unplayable files are excluded from the index**: `parseMediaFileMetadata` returns
   `decodable: false` when neither music-metadata nor ffprobe can read the file (e.g. truncated
   youtube-music `.webm` downloads whose EBML header is garbage), and `scanMultipleLibraries`
@@ -81,34 +85,34 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   authority for `.webm` (audio-only vs MV share the ext). Both client and server send
   `video/webm` (not `audio/webm`) for `.webm` so the native element/video.js use the video
   tech; audio-only webm still decodes with `videoWidth=0` → visualizer.
-- **`.mkv` MTV files are Matroska/EBML, and MOST of them are AV1 video + Opus audio** (ffprobe-confirmed:
-  1a594d9ce387, 40b46e3192a7, 57418542290f, bba96809d1aa, d448a559f462, f9ed4c4d19bf = av1; only
-  73aa5632b07b = h264 High + aac). Chrome has no `video/x-matroska` demuxer, and its libwebm demuxer
-  **forbids h264 under webm MIME** (old MIME trick → black screen + audio). Even after remuxing to MP4,
-  **this machine's Chrome renders these YouTube-sourced AV1 streams black** (audio fine) while ffmpeg/libdav1d
-  decodes them normally and Chrome plays libaom-generated AV1 test files — so AV1 is not usable here.
-  Current fix = **codec-aware stream remux** in `/api/stream/:id` (`server.ts`): on cache miss, ffprobe the
-  source video codec (`execFileSync('ffprobe', ... codec_name ...)`), then `spawn` ffmpeg piping stdout →
-  response (`Content-Type: video/mp4`, chunked, Range ignored on first request) while teeing stdout to
-  `mtv_cache/<id>.mp4` (atomic tmp+rename, `crypto.randomUUID()` tmp):
-  - video already `h264` → `-c copy` (pure remux, ~0% CPU, instant):
-    `ffmpeg -y -i <in.mkv> -c copy -f mp4 -movflags frag_keyframe+empty_moov+default pipe:1`
-  - otherwise (av1/hevc/…) → transcode to H.264, audio copied:
-    `ffmpeg -y -i <in.mkv> -c:v libx264 -preset fast -crf 23 -c:a copy -f mp4 -movflags frag_keyframe+empty_moov+default pipe:1`
-    (~12.5s wall for a 221s 854x480 MV; one-time per file, then cached).
-  Cache staleness = cache mtime >= source mtime. Subsequent requests serve the cached `.mp4` through the
-  normal HTTP 206 Range path → smooth seeking. Client `VideoJsPlayer.tsx` mime is
-  **`video/mp4` for all `.mkv`/`.mp4`** (no more `video/webm` for `.mkv`); `.webm` stays `video/webm`.
-  Stale artifacts in `mtv_cache/` from the old webm-remux path (e.g. `*.webm`) are simply never read again.
-  Note: fragmented MP4 (`empty_moov`) makes Chrome report `duration = Infinity` at first and then
-  **the end of the last buffered fragment** (e.g. 10.08 → 20.04 → 50.04 for a 199s file) until the whole
-  file is buffered. So the DB must carry a real duration: `parseMediaFileMetadata` falls back to
-  `probeDurationWithFfprobe()` (`server.ts`, ffprobe `format=duration`) for any `VIDEO_EXTS` file where
-  music-metadata gave nothing — music-metadata does NOT parse Matroska, so all 1233 `.mkv` items had
-  `duration: undefined` before. `VideoJsPlayer.tsx` seeds `duration` from `currentTrack?.duration` on
-  source change (`seedDurationRef`) and `durationchange` only accepts a value `>= seed - 1`, otherwise
-  the progress bar percentage is garbage. Scrub now always seeks (`handleProgressScrub` → `handleSeek`),
-  not only when `!isDraggingProgress`.
+- **`.mkv` MTV files are Matroska/EBML, and essentially all of them are AV1 video + Opus audio**
+  (sampled 60/60 = av1; the only h264 one found is `73aa5632b07b`). Chrome has no `video/x-matroska`
+  demuxer, so every `.mkv` must be converted before it can play.
+  Current fix = **sidecar remux engine** in `server.ts`: `foo.mkv` → `foo.mkv.webm` written next to the
+  source (atomic `foo.mkv.fastmusic.tmp` + rename). `/api/stream/:id` for `.mkv` calls
+  `ensureTranscoded()`; if the sidecar is fresh (mtime >= source mtime) it is served as `video/webm`
+  through the normal HTTP 206 Range path, otherwise the request blocks until the job finishes
+  (`?wait=` ms, default 600000) and then serves it.
+  Codec-aware (`probeCodecsAsync` + `buildFfmpegArgs`), all lossless unless noted:
+  - `av1` / `vp9` → remux to `<src>.mkv.webm` (`-c copy -f webm`, ~0.4s/file, ~0 CPU). Verified in
+    real Chrome: libwebm decodes these AV1 streams fine (picture + seeking both work).
+  - `h264` / `hevc` → remux to `<src>.mkv.mp4` (`-c copy -f mp4`). Chrome DOES render H.264 MP4 on
+    this machine — the old "MP4/H.264 黑屏" conclusion was wrong (it was the video.js wrapper
+    `opacity-0` bug, see the next gotcha).
+  - probe failed / other codec → VP9+Opus re-encode into WebM (`libvpx-vp9 -deadline good -crf 33`).
+  Sidecars are keyed by **source path** (`transcodeJobs`), and `findFreshSidecar()` checks both
+  `.mkv.webm` and `.mkv.mp4`; `isSidecarFile()` makes the scanner skip both.
+  `queueAllMkvTranscodes()` runs at startup and enqueues every `.mkv` without a fresh sidecar
+  (small files first, `TRANCODE_CONCURRENCY` default 3). Disable with `PRETRANCODE_MKV=0`.
+  The scanner skips sidecars via `isSidecarFile()`, so they are never indexed as audio/video.
+  Client `VideoJsPlayer.tsx` uses `video/webm` for `.mkv` and polls `/api/transcode/:id` only to render
+  the "排队 / 转码中 x%" badge.
+  Note: music-metadata does NOT parse Matroska, so `parseMediaFileMetadata` falls back to
+  `probeMediaWithFfprobe()` (async ffprobe `format=duration`) for any file where it gave
+  nothing — otherwise all 1233 `.mkv` items had `duration: undefined` and the progress bar was garbage.
+  `VideoJsPlayer.tsx` seeds `duration` from `currentTrack?.duration` on source change (`seedDurationRef`)
+  and `durationchange` only accepts a value `>= seed - 1`. Scrub always seeks (`handleProgressScrub` →
+  `handleSeek`), not only when `!isDraggingProgress`.
 - `abs_path` is now **always a local file path** (no seed items). `/api/stream/:id`
   still has a vestigial `res.redirect()` branch for `http(s)://` abs_path (`server.ts:522-523`)
   that is never hit in practice; the real path is local `fs.createReadStream` + HTTP `206`
