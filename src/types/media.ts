@@ -72,6 +72,19 @@ export interface PaginatedTracksResponse {
   has_more: boolean;
 }
 
+// 歌词（服务端 /api/lyrics 返回，来源为网易云明文接口）
+export interface LyricsResult {
+  found: boolean;
+  ncm_id?: number;
+  matched_title?: string;
+  matched_artist?: string;
+  lyric: string;      // 原歌词 LRC
+  tlyric: string;     // 翻译歌词
+  romalrc: string;    // 罗马音歌词
+  cached?: boolean;
+  detail?: string;
+}
+
 export interface PlayHistoryItem {
   track: MediaItem;
   playedAt: number;

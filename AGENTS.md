@@ -48,7 +48,8 @@ playback/library state). UI pieces live in `src/components/`.
 
 Server API routes (all in `server.ts`): `/api/health`, `GET|POST /api/directories`,
 `POST /api/scan`, `/api/artists`, `/api/albums`, `/api/tracks` (filter + `limit/offset`
-or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`.
+or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
+`/api/transcode/:id`, `/api/lyrics`.
 
 ## Gotchas
 
@@ -112,6 +113,14 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`.
   still has a vestigial `res.redirect()` branch for `http(s)://` abs_path (`server.ts:522-523`)
   that is never hit in practice; the real path is local `fs.createReadStream` + HTTP `206`
   Range streaming.
+- **歌词来自网易云明文接口**（不需要 weapi/AES）：`GET /api/lyrics?title=&artist=&duration=` 或 `?id=<网易云ID>`。
+  服务端先用 `https://music.163.com/api/search/get?s=...&type=1` 找歌曲 ID，再取
+  `https://music.163.com/api/song/lyric?id=...&lv=1&tv=1&rv=1`。**必须带浏览器 UA + Referer**，
+  否则网易云返回空 body。搜索接口返回的 `duration` 单位是**毫秒**（打分时除以 1000）。
+  结果（含"无歌词"的负结果）缓存在内存 Map 并持久化到 `fastmusic_lyrics.json`（已 gitignore）。
+  客户端 `VideoJsPlayer.tsx`：`parseLrc` 解析 LRC（一行多个时间戳展开），把 `tlyric` 翻译并入同一时间轴，
+  过滤 作词/作曲/原唱/【…】 这类 credits 行；高亮行 = 时间戳 <= `currentTime` 的最后一条。
+  开关是控制栏的 Captions 按钮或 `L` 键，持久在 `localStorage('fastmusic_lyrics')`（默认开启）。
 - **video.js copies the `<video>` element's className into its auto-created wrapper div at init, and the
   wrapper's classes never change afterwards.** `VideoJsPlayer.tsx` must keep the `<video>` classes STATIC
   (`video-js vjs-custom-theme w-full h-full`). Conditional visibility classes (e.g. `!isVideo ? 'opacity-0

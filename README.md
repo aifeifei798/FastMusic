@@ -81,10 +81,12 @@ src/
 | `GET /api/tracks/:id` | 曲目详情 |
 | `GET /api/stream/:id` | 流式播放(206 Range;`.mkv` 自动 remux/转码) |
 | `GET /api/transcode/:id` | 转码任务状态(前端显示进度) |
+| `GET /api/lyrics` | 网易云歌词代理:`?title=&artist=&duration=`(自动搜索匹配)或 `?id=<网易云歌曲ID>`;返回 `{found, lyric, tlyric, romalrc}` |
 
 ## 📝 已知事项
 
 - 音乐文件本身不在仓库内;索引 `fastmusic_db.json`、转码缓存 `mtv_cache/`、日志均已 gitignore。
 - `.webm` 既是音频容器也是视频容器:服务端按实际解码结果分类,客户端用 `videoWidth > 0` 判断画面 vs 频谱。
 - 首次全量扫描较慢(music-metadata 逐文件解析);后续增量扫描很快。
+- 歌词来自网易云明文接口(`music.163.com/api/song/lyric`),服务端代理 + 缓存(`fastmusic_lyrics.json`,已 gitignore);本地曲库标题/歌手若与网易云不一致,可能匹配到翻唱版本或无歌词。
 - 无测试套件;`npm run lint` 即 `tsc --noEmit`。

@@ -24,7 +24,8 @@ import {
   Activity,
   Loader2,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  Captions
 } from 'lucide-react';
 import { MediaItem, PlayMode, TranscodeStatus } from '../types/media';
 import { AudioVisualizer, VisualizerMode } from './AudioVisualizer';
@@ -54,6 +55,48 @@ const EQ_PRESET_BY_NAME: Record<string, number[]> = EQ_PRESETS.reduce(
   (acc, p) => { acc[p.name] = p.curve; return acc; },
   {} as Record<string, number[]>,
 );
+
+// --- 歌词 (LRC) 解析 ---
+// 一行可能有多个时间戳 ([00:01.00][00:02.00] 同一句), 展开成多条。
+interface LyricLine {
+  time: number;
+  text: string;
+  isTranslation?: boolean;
+}
+
+// 作词/作曲/编曲/原唱这类元数据行不是歌词, 过滤掉, 否则开头滚动全是 credits
+const LRC_META_LINE_RE =
+  /^(作词|作曲|编曲|歌词|原唱|演唱|翻唱|艺人|统筹|监制|制作人|制作|混音|录音|母带|和声|吉他|贝斯|鼓|钢琴|笛|弦|合成|编程|出品|发行|版权|授权|OP|SP|CV|PV|Rap|Lyrics|Written|Composed|Arranged|Translated|Mixed|Recorded)/i;
+
+function isMetaLine(text: string): boolean {
+  // 【作词 : xxx】/【本音乐作品已获得正版授权】这类装饰行不是歌词
+  if (/^【[^】]*】$/.test(text) || /^\[[^\]]*\]$/.test(text)) return true;
+  // 去掉行首的括号装饰 (【作词 : xxx】) 再判断
+  return LRC_META_LINE_RE.test(text.replace(/^[\[【(（]/, ''));
+}
+
+function parseLrc(raw: string): LyricLine[] {
+  const out: LyricLine[] = [];
+  for (const rawLine of (raw || '').split(/\r?\n/)) {
+    const stamps = Array.from(rawLine.matchAll(/\[(\d{1,2}):(\d{1,2})(?:[.,.](\d{1,3}))?\]/g));
+    const text = rawLine.replace(/\[[^\]]*\]/g, '').trim();
+    if (!text || isMetaLine(text)) continue;
+    for (const m of stamps) {
+      const frac = m[3] ? parseInt(m[3].padEnd(3, '0'), 10) / 1000 : 0;
+      out.push({ time: parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + frac, text });
+    }
+  }
+  out.sort((a, b) => a.time - b.time);
+  return out;
+}
+
+// 把翻译行并入主歌词时间轴（同一时刻主歌词先显示）
+function mergeLyrics(main: LyricLine[], translation: LyricLine[]): LyricLine[] {
+  if (!translation.length) return main;
+  const merged = [...main, ...translation.map((l) => ({ ...l, isTranslation: true }))];
+  merged.sort((a, b) => a.time - b.time || (a.isTranslation ? 1 : 0) - (b.isTranslation ? 1 : 0));
+  return merged;
+}
 
 interface VideoJsPlayerProps {
   currentTrack: MediaItem | null;
@@ -188,6 +231,75 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   const [eqPreset, setEqPreset] = useState<string>('flat');
   const [showEqPanel, setShowEqPanel] = useState<boolean>(false);
   const [visualizerMode, setVisualizerMode] = useState<VisualizerMode>('bars');
+
+  // --- 歌词 (网易云) ---
+  // 开关持久在 localStorage('fastmusic_lyrics')；默认开启。
+  const [showLyrics, setShowLyrics] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('fastmusic_lyrics') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const [lyricLines, setLyricLines] = useState<LyricLine[]>([]);
+  // idle=未请求, loading=取歌词中, found=有歌词, none=网易云没有该曲歌词
+  const [lyricStatus, setLyricStatus] = useState<'idle' | 'loading' | 'found' | 'none'>('idle');
+  const [lyricMatch, setLyricMatch] = useState<{ title: string; artist: string; id?: number } | null>(null);
+
+  useEffect(() => {
+    if (!currentTrack) {
+      setLyricLines([]);
+      setLyricStatus('idle');
+      setLyricMatch(null);
+      return;
+    }
+    if (!showLyrics) return;
+
+    let cancelled = false;
+    setLyricLines([]);
+    setLyricMatch(null);
+    setLyricStatus('loading');
+
+    mediaApi
+      .getLyrics(currentTrack.title, currentTrack.artist, currentTrack.duration)
+      .then((r) => {
+        if (cancelled) return;
+        if (r && r.found && r.lyric) {
+          const merged = mergeLyrics(parseLrc(r.lyric), parseLrc(r.tlyric || ''));
+          if (merged.length) {
+            setLyricLines(merged);
+            setLyricMatch({
+              title: r.matched_title || currentTrack.title,
+              artist: r.matched_artist || currentTrack.artist,
+              id: r.ncm_id,
+            });
+            setLyricStatus('found');
+          } else {
+            setLyricStatus('none');
+          }
+        } else {
+          setLyricStatus('none');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTrack, showLyrics]);
+
+  const toggleLyrics = () => {
+    // 函数式更新: 键盘快捷键的 handler 闭包可能持有旧 toggleLyrics,
+    // 用 prev 而非 showLyrics 避免读到过期值
+    setShowLyrics((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('fastmusic_lyrics', next ? '1' : '0');
+      } catch {
+        // localStorage 不可用时忽略
+      }
+      return next;
+    });
+  };
 
   // 均衡器 Web Audio 节点（由 player 拥有整个 audio graph）
   const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
@@ -527,6 +639,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           e.preventDefault();
           player.muted(!player.muted());
           break;
+        case 'KeyL':
+          e.preventDefault();
+          toggleLyrics();
+          break;
       }
     };
 
@@ -708,6 +824,14 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   const isVideo = currentTrack?.media_type === 'video' || hasVideoTrack;
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufferPercent = duration > 0 ? (bufferedEnd / duration) * 100 : 0;
+
+  // 当前歌词行 = 时间戳 <= currentTime 的最后一条（时间轴已排序，遇到更大的即停）
+  let activeLyricIndex = -1;
+  for (let i = 0; i < lyricLines.length; i++) {
+    if (lyricLines[i].time <= currentTime + 0.05) activeLyricIndex = i;
+    else break;
+  }
+
 
   return (
     <div
@@ -919,6 +1043,62 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           </div>
         )}
       </div>
+
+      {/* 歌词面板 — 网易云 LRC 时间同步高亮。pointer-events-none: 不干扰点击播放/控制栏 */}
+      {showLyrics && (
+        <div
+          className="absolute left-1/2 bottom-20 z-[15] -translate-x-1/2 w-[min(620px,88%)] pointer-events-none"
+          title={
+            lyricMatch
+              ? `歌词来源: 网易云 · ${lyricMatch.title} - ${lyricMatch.artist}`
+              : '歌词来源: 网易云'
+          }
+        >
+          <div className="rounded-xl bg-black/45 backdrop-blur-sm border border-neutral-800/50 px-4 py-3 flex flex-col gap-1 max-h-[52%] overflow-hidden shadow-lg">
+            {lyricStatus === 'loading' && (
+              <div className="flex items-center gap-2 text-xs text-neutral-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                正在从网易云获取歌词…
+              </div>
+            )}
+
+            {lyricStatus === 'none' && (
+              <div className="flex items-center gap-2 text-xs text-neutral-500">
+                <Captions className="w-3.5 h-3.5" />
+                <span>网易云未找到「{currentTrack?.title || '该曲目'}」的歌词</span>
+              </div>
+            )}
+
+            {lyricStatus === 'found' && (
+              <div className="flex flex-col gap-1">
+                {(() => {
+                  const start = Math.max(0, activeLyricIndex - 2);
+                  const end = Math.min(lyricLines.length, activeLyricIndex + 4);
+                  return lyricLines.slice(start, end).map((line, offset) => {
+                    const i = start + offset;
+                    const isActive = i === activeLyricIndex;
+                    return (
+                      <p
+                        key={`${line.time}-${i}`}
+                        className={`leading-snug transition-all duration-300 ${
+                          line.isTranslation
+                            ? `text-[11px] text-neutral-500 ${isActive ? 'opacity-90' : 'opacity-50'}`
+                            : isActive
+                              ? 'text-white text-base sm:text-lg font-semibold'
+                              : 'text-neutral-500 text-sm'
+                        }`}
+                      >
+                        {line.text}
+                      </p>
+                    );
+                  });
+                })()}
+                <span className="text-[10px] text-neutral-600 mt-1">歌词来源 · 网易云</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 均衡器 (Equalizer) 面板 — 10段 Web Audio 均衡器，预设 + 手动调节 */}
       {showEqPanel && (
@@ -1223,6 +1403,20 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 <Tv className="w-4 h-4" />
               </button>
             )}
+
+            {/* 歌词开关 (网易云 LRC) */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleLyrics();
+              }}
+              title={showLyrics ? '隐藏歌词 (L)' : '显示歌词 (L)'}
+              className={`p-2 rounded-lg hover:bg-neutral-800/80 transition-colors ${
+                showLyrics ? 'text-rose-400' : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              <Captions className="w-4 h-4" />
+            </button>
 
             {/* 均衡器 面板开关 (moved from top bar) */}
             <button

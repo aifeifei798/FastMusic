@@ -1,4 +1,4 @@
-import { MediaItem, ArtistSummary, AlbumSummary, ScanResponse, PaginatedTracksResponse, RadioChannel, TranscodeStatus } from '../types/media';
+import { MediaItem, ArtistSummary, AlbumSummary, ScanResponse, PaginatedTracksResponse, RadioChannel, TranscodeStatus, LyricsResult } from '../types/media';
 export class MediaApiService {
   private baseUrl: string;
 
@@ -185,6 +185,24 @@ export class MediaApiService {
       if (!res.ok) return null;
       return (await res.json()) as TranscodeStatus;
     } catch (err) {
+      return null;
+    }
+  }
+
+  // 歌词：服务端代理网易云明文接口（搜索 title+artist → 匹配最佳歌曲 → 取 LRC）。
+  // 网易云接口可能慢（首次 ~1-2s），超时返回 null 而不是抛错。
+  async getLyrics(title: string, artist: string, duration?: number): Promise<LyricsResult | null> {
+    try {
+      const url = new URL(this.getFullUrl('/api/lyrics'), window.location.origin);
+      url.searchParams.append('title', title || '');
+      if (artist) url.searchParams.append('artist', artist);
+      if (duration) url.searchParams.append('duration', String(Math.round(duration)));
+      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(12000) });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data && typeof data === 'object' ? (data as LyricsResult) : null;
+    } catch (err) {
+      console.warn('Lyrics fetch failed', err);
       return null;
     }
   }

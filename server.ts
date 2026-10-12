@@ -1003,6 +1003,201 @@ app.get('/api/stream/:id', (req: Request, res: Response) => {
   serveFileWithRange(res, servePath, mimeType, req.headers.range);
 });
 
+// ============================================================
+// 歌词：网易云明文接口（不需要 weapi/AES 加密）
+//   搜索: https://music.163.com/api/search/get?s=...&type=1
+//   歌词: https://music.163.com/api/song/lyric?id=<id>&lv=1&tv=1&rv=1
+// 匹配策略：本地 title+artist 搜索 → 按标题/歌手/时长打分选最佳候选 →
+// 取 lrc（原歌词），tlyric（翻译）可选。结果缓存（内存 + fastmusic_lyrics.json）。
+// ============================================================
+const NCM_HEADERS = {
+  // 裸接口不加密，但缺 UA/Referer 容易被风控返回空 body
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  Referer: 'https://music.163.com/',
+  Accept: 'application/json, text/plain, */*',
+};
+
+interface LyricResult {
+  found: boolean;
+  ncm_id?: number;
+  matched_title?: string;
+  matched_artist?: string;
+  lyric: string;
+  tlyric: string;
+  romalrc: string;
+  fetched_at: number;
+}
+
+const LYRIC_CACHE_MAX = 800;
+const lyricCache = new Map<string, LyricResult>();
+const LYRIC_DB_FILE = path.join(__dirname, 'fastmusic_lyrics.json');
+
+function lyricCacheKey(title: string, artist: string): string {
+  return `${normalizeText(title)}|${normalizeText(artist)}`;
+}
+
+function loadLyricCache(): void {
+  try {
+    if (!fs.existsSync(LYRIC_DB_FILE)) return;
+    const data = JSON.parse(fs.readFileSync(LYRIC_DB_FILE, 'utf8')) as Record<string, LyricResult>;
+    for (const [k, v] of Object.entries(data)) {
+      if (v && typeof v.lyric === 'string') lyricCache.set(k, v);
+    }
+    console.log(`[Lyrics] 已加载歌词缓存 ${lyricCache.size} 条`);
+  } catch (e) {
+    console.warn('[Lyrics] 歌词缓存读取失败', (e as Error).message);
+  }
+}
+
+// 原子写（tmp + rename），失败只告警不影响播放
+function saveLyricCache(): void {
+  try {
+    const entries: Record<string, LyricResult> = {};
+    for (const [k, v] of lyricCache) entries[k] = v;
+    const tmp = `${LYRIC_DB_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(entries));
+    fs.renameSync(tmp, LYRIC_DB_FILE);
+  } catch (e) {
+    console.warn('[Lyrics] 歌词缓存写入失败', (e as Error).message);
+  }
+}
+
+function normalizeText(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[\p{P}\p{S}]/gu, '');
+}
+
+async function ncmFetchJson(url: string, timeoutMs = 8000): Promise<any> {
+  const res = await fetch(url, {
+    headers: NCM_HEADERS,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw new Error(`网易云接口 HTTP ${res.status}`);
+  const text = await res.text();
+  if (!text) throw new Error('网易云返回空响应');
+  return JSON.parse(text);
+}
+
+// 网易云搜索（type=1 = 歌曲）
+async function searchNeteaseSongs(query: string, limit = 10): Promise<any[]> {
+  const url = `https://music.163.com/api/search/get?v=1&type=1&limit=${limit}&s=${encodeURIComponent(query)}`;
+  const data = await ncmFetchJson(url);
+  const list = data?.result?.songs;
+  return Array.isArray(list) ? list : [];
+}
+
+async function fetchNeteaseLyric(id: number): Promise<LyricResult | null> {
+  const data = await ncmFetchJson(`https://music.163.com/api/song/lyric?id=${id}&lv=1&tv=1&rv=1`);
+  const lyric = (data?.lrc?.lyric || '').trim();
+  if (!lyric) return null;
+  return {
+    found: true,
+    ncm_id: id,
+    matched_title: '',
+    lyric,
+    tlyric: (data?.tlyric?.lyric || '').trim(),
+    romalrc: (data?.romalrc?.lyric || '').trim(),
+    fetched_at: Date.now(),
+  };
+}
+
+// 打分：标题完全匹配 > 包含匹配；歌手匹配加分；时长接近加分
+function scoreCandidate(cand: any, title: string, artist: string, duration: number): number {
+  const qTitle = normalizeText(title);
+  const cTitle = normalizeText(cand?.name || '');
+  let score = 0;
+  if (!cTitle) return -1;
+  if (cTitle === qTitle) score += 100;
+  else if (cTitle.includes(qTitle) || qTitle.includes(cTitle)) score += 60;
+  else return -1;
+
+  const cArtist = normalizeText((cand?.artists || []).map((a: any) => a?.name || '').join(''));
+  const qArtist = normalizeText(artist);
+  if (qArtist && cArtist) {
+    if (cArtist === qArtist) score += 40;
+    else if (cArtist.includes(qArtist) || qArtist.includes(cArtist)) score += 25;
+  }
+  if (duration && cand?.duration) {
+    // 搜索接口返回 duration 单位是毫秒
+    const candDur = cand.duration / 1000;
+    const diff = Math.abs(candDur - duration);
+    if (diff <= 3) score += 20;
+    else if (diff <= 10) score += 10;
+    else if (diff > 30) score -= 15;
+  }
+  return score;
+}
+
+// 8. 歌词：?title=&artist=&duration= 自动搜索匹配；?id= 直接取网易云歌曲 ID
+app.get('/api/lyrics', async (req: Request, res: Response) => {
+  const title = (req.query.title as string | undefined) || '';
+  const artist = (req.query.artist as string | undefined) || '';
+  const duration = Number(req.query.duration) || 0;
+  const directId = Number(req.query.id) || 0;
+
+  if (!title && !directId) {
+    res.status(400).json({ found: false, detail: '缺少 title 或 id 参数' });
+    return;
+  }
+
+  const key = directId ? `id:${directId}` : lyricCacheKey(title, artist);
+  const cached = lyricCache.get(key);
+  if (cached) {
+    res.json({ ...cached, cached: true });
+    return;
+  }
+
+  try {
+    // 候选来源：先 "标题 歌手"，若无匹配再只搜标题（网易云搜索对原唱/翻唱排序不稳定）
+    const queries = directId
+      ? []
+      : [artist ? `${title} ${artist}` : title, ...(artist && title ? [title] : [])];
+    const candidates: any[] = [];
+    const seen = new Set<number>();
+    for (const q of queries) {
+      for (const cand of await searchNeteaseSongs(q, 10)) {
+        if (cand?.id && !seen.has(cand.id)) {
+          seen.add(cand.id);
+          candidates.push(cand);
+        }
+      }
+    }
+    if (directId) candidates.push({ id: directId, name: title, artists: [{ name: artist }] });
+
+    let result: LyricResult | null = null;
+    for (const cand of candidates) {
+      if (!cand?.id) continue;
+      if (!directId && scoreCandidate(cand, title, artist, duration) < 60) continue;
+      const lyric = await fetchNeteaseLyric(cand.id);
+      if (lyric) {
+        lyric.matched_title = cand.name || title;
+        lyric.matched_artist = (cand.artists || []).map((a: any) => a?.name || '').join(', ') || artist;
+        result = lyric;
+        break;
+      }
+    }
+
+    if (!result) {
+      // 负结果也缓存，避免每次切歌都重复打网络
+      const miss: LyricResult = { found: false, lyric: '', tlyric: '', romalrc: '', fetched_at: Date.now() };
+      lyricCache.set(key, miss);
+      res.json({ ...miss, cached: false });
+      return;
+    }
+
+    if (lyricCache.size >= LYRIC_CACHE_MAX) lyricCache.delete(lyricCache.keys().next().value as string);
+    lyricCache.set(key, result);
+    saveLyricCache();
+    res.json({ ...result, cached: false });
+  } catch (e) {
+    console.warn('[Lyrics] 获取歌词失败', (e as Error).message);
+    res.status(502).json({ found: false, detail: '获取歌词失败（网易云不可达或被风控）' });
+  }
+});
+
 // 7. 健康检查
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', server: 'Express Media Server', total_tracks: MEDIA_DB.size });
@@ -1010,6 +1205,8 @@ app.get('/api/health', (_req: Request, res: Response) => {
 
 // ================= Vite / 静态文件托管 =================
 async function startServer() {
+  loadLyricCache(); // 歌词缓存（网易云）持久化，重启后不重复请求
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
