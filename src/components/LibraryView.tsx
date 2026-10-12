@@ -16,11 +16,15 @@ import {
   Loader2,
   Clock,
   AlertTriangle,
-  Captions
+  Captions,
+  ChevronDown
 } from 'lucide-react';
 import { MediaItem, ArtistSummary, AlbumSummary, TranscodeInfo, TranscodeSummary, TrackSort } from '../types/media';
 import { mediaApi } from '../services/api';
 import { SCROLLBAR_CLASSES, NO_SCROLLBAR_CLASSES } from '../utils/ui';
+
+// 标签上的数字缩写：33878 → 33.9k，让工具栏在窄屏也能一行装下
+const fmtNum = (n: number): string => (n >= 10000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
 interface LibraryViewProps {
   tracks: MediaItem[];
@@ -199,6 +203,29 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     setLyricPrefetching(false);
   };
 
+  // 「筛选与工具」下拉：只看已转码 / 只看有歌词 / 预取封面 / 预取歌词 / 行密度
+  // 收进一个菜单，工具栏不再换行（窄屏尤其重要）。
+  const [toolMenuOpen, setToolMenuOpen] = useState<boolean>(false);
+  const toolMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!toolMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!toolMenuRef.current?.contains(e.target as Element)) setToolMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setToolMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('click', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('click', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [toolMenuOpen]);
+
   useEffect(() => {
     const refresh = async () => {
       const ids = tracksRef.current.filter((t) => t.ext === '.mkv').map((t) => t.id);
@@ -368,7 +395,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 : 'text-neutral-400 hover:text-neutral-200'
             }`}
           >
-            曲目 {tracks.length}/{totalTracks}
+            曲目 {fmtNum(tracks.length)}/{fmtNum(totalTracks)}
           </button>
           <button
             onClick={() => setActiveTab('artists')}
@@ -378,7 +405,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 : 'text-neutral-400 hover:text-neutral-200'
             }`}
           >
-            歌手/UP主 {artists.length}
+            歌手 {fmtNum(artists.length)}
           </button>
           <button
             onClick={() => setActiveTab('albums')}
@@ -388,7 +415,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 : 'text-neutral-400 hover:text-neutral-200'
             }`}
           >
-            专辑 {albums.length}
+            专辑 {fmtNum(albums.length)}
           </button>
           <button
             onClick={() => setActiveTab('favorites')}
@@ -399,7 +426,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             }`}
           >
             <Heart className={`w-3.5 h-3.5 ${favorites.length > 0 ? 'fill-rose-500 text-rose-500' : 'text-neutral-400'}`} />
-            <span>我的收藏 ({favorites.length})</span>
+            <span>收藏 {fmtNum(favorites.length)}</span>
           </button>
         </div>
 
@@ -466,108 +493,136 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             </button>
           </div>
 
-          {/* 只看已转码：隐藏排队/转码中的 .mkv，只留下可直接播的条目 */}
-          {onToggleReadyOnly && (
+          {/* 「筛选与工具」下拉：只看已转码 / 只看有歌词 / 预取封面 / 预取歌词 / 行密度
+              收进一个菜单，工具栏不再换行（窄屏尤其重要） */}
+          <div ref={toolMenuRef} className="relative shrink-0">
             <button
-              onClick={onToggleReadyOnly}
-              title="只显示已转码(或无需转码)的曲目；排队中和转码中的 .mkv 会被隐藏"
-              className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 shrink-0 ${
-                readyOnly
-                  ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700/60'
-                  : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
-              }`}
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>只看已转码</span>
-            </button>
-          )}
-
-          {/* 只看有歌词：只留下歌词缓存里已命中（网易云有歌词）的曲目。
-              筛选只读服务端缓存，所以先点「预取歌词」覆盖率更高 */}
-          {onToggleHasLyrics && (
-            <button
-              onClick={onToggleHasLyrics}
-              title="只显示网易云有歌词的曲目（需要先预取或播放过）"
-              className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 shrink-0 ${
-                hasLyricsOnly
-                  ? 'bg-sky-950/70 text-sky-300 border-sky-700/60'
-                  : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
-                }`}
-              >
-                <Captions className="w-3.5 h-3.5" />
-                <span>只看有歌词</span>
-              </button>
-            )}
-
-            {/* 排序: 服务端 /api/tracks 的 sort 参数（默认 = 扫描索引顺序） */}
-          {onSortChange && (
-            <select
-              value={sort}
-              onChange={(e) => onSortChange(e.target.value as TrackSort)}
-              title="列表排序"
-              className="px-2.5 py-1.5 text-xs rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white cursor-pointer shrink-0"
-            >
-              <option value="default">默认顺序</option>
-              <option value="title">标题 A→Z</option>
-              <option value="artist">歌手 A→Z</option>
-              <option value="album">专辑 A→Z</option>
-              <option value="duration">时长</option>
-              <option value="size">文件大小</option>
-              <option value="mtime">文件日期</option>
-              <option value="random">随机</option>
-            </select>
-          )}
-
-          {/* 行密度: 标准 / 紧凑（紧凑隐藏专辑列, 每屏多几行） */}
-          {onToggleDensity && (
-            <button
-              onClick={onToggleDensity}
-              title={rowDensity === 'compact' ? '当前紧凑模式，点击恢复标准行高' : '当前标准模式，点击切换紧凑行高'}
-              className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors shrink-0 ${
-                rowDensity === 'compact'
+              onClick={() => setToolMenuOpen((v) => !v)}
+              title="筛选与工具：只看已转码 / 只看有歌词 / 预取封面 / 预取歌词 / 行密度"
+              className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
+                toolMenuOpen
                   ? 'bg-neutral-800 text-white border-neutral-700'
                   : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
               }`}
             >
-              {rowDensity === 'compact' ? '紧凑' : '标准'}
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>筛选与工具</span>
+              {(readyOnly || hasLyricsOnly) && (
+                <span className="flex items-center gap-1">
+                  {readyOnly && (
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 text-[10px]">已转码</span>
+                  )}
+                  {hasLyricsOnly && (
+                    <span className="px-1.5 py-0.5 rounded bg-sky-950/70 text-sky-300 text-[10px]">有歌词</span>
+                  )}
+                </span>
+              )}
+              <ChevronDown className={`w-3 h-3 transition-transform ${toolMenuOpen ? 'rotate-180' : ''}`} />
             </button>
-          )}
 
-          {/* 封面预取：批量解析当前已加载条目的封面（本地内嵌 → iTunes → 网易云），
-              结果缓存到 covers/，列表/歌手/专辑卡片下次渲染就有图 */}
-          <button
-            onClick={handlePrefetchCovers}
-            title="为当前列表条目获取封面：优先本地内嵌封面，其次 iTunes / 网易云"
-            className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors shrink-0 flex items-center gap-1.5 ${
-              coverPrefetching
-                ? 'bg-rose-950/70 text-rose-300 border-rose-800/60'
-                : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
-            }`}
-          >
-            {coverPrefetching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Disc className="w-3.5 h-3.5" />}
-            <span>{coverPrefetching ? '获取封面…' : '预取封面'}</span>
-          </button>
-          {coverPrefetchInfo && !coverPrefetching && (
-            <span className="text-[11px] text-neutral-500 shrink-0">{coverPrefetchInfo}</span>
-          )}
+            {toolMenuOpen && (
+              <div className="absolute top-full right-0 z-40 mt-2 w-[360px] max-w-[92vw] p-3 rounded-xl bg-neutral-900 border border-neutral-800 shadow-xl shadow-black/60">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {onToggleReadyOnly && (
+                    <button
+                      onClick={onToggleReadyOnly}
+                      title="只显示已转码(或无需转码)的曲目；排队中和转码中的 .mkv 会被隐藏"
+                      className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
+                        readyOnly
+                          ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700/60'
+                          : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>只看已转码</span>
+                    </button>
+                  )}
+                  {onToggleHasLyrics && (
+                    <button
+                      onClick={onToggleHasLyrics}
+                      title="只显示网易云有歌词的曲目（筛选只读服务端歌词缓存，先预取覆盖率更高）"
+                      className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
+                        hasLyricsOnly
+                          ? 'bg-sky-950/70 text-sky-300 border-sky-700/60'
+                          : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+                        }`}
+                    >
+                      <Captions className="w-3.5 h-3.5" />
+                      <span>只看有歌词</span>
+                    </button>
+                  )}
+                </div>
 
-          {/* 歌词预取：批量解析当前列表的网易云歌词并缓存，之后播放秒出歌词，
-              「只看有歌词」筛选也依赖同一缓存 */}
-          <button
-            onClick={handlePrefetchLyrics}
-            title="为当前列表条目获取歌词（网易云），缓存到 fastmusic_lyrics.json"
-            className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors shrink-0 flex items-center gap-1.5 ${
-              lyricPrefetching
-                ? 'bg-sky-950/70 text-sky-300 border-sky-800/60'
-                : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
-            }`}
-          >
-            {lyricPrefetching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Captions className="w-3.5 h-3.5" />}
-            <span>{lyricPrefetching ? '获取歌词…' : '预取歌词'}</span>
-          </button>
-          {lyricPrefetchInfo && !lyricPrefetching && (
-            <span className="text-[11px] text-neutral-500 shrink-0">{lyricPrefetchInfo}</span>
-          )}
+                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                  {onSortChange && (
+                    <select
+                      value={sort}
+                      onChange={(e) => onSortChange(e.target.value as TrackSort)}
+                      title="列表排序（服务端 /api/tracks 的 sort 参数，默认 = 扫描索引顺序）"
+                      className="px-2.5 py-1.5 text-xs rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white cursor-pointer"
+                    >
+                      <option value="default">默认顺序</option>
+                      <option value="title">标题 A→Z</option>
+                      <option value="artist">歌手 A→Z</option>
+                      <option value="album">专辑 A→Z</option>
+                      <option value="duration">时长</option>
+                      <option value="size">文件大小</option>
+                      <option value="mtime">文件日期</option>
+                      <option value="random">随机</option>
+                    </select>
+                  )}
+                  {onToggleDensity && (
+                    <button
+                      onClick={onToggleDensity}
+                      title={rowDensity === 'compact' ? '当前紧凑模式，点击恢复标准行高' : '当前标准模式，点击切换紧凑行高（紧凑隐藏专辑列，每屏多几行）'}
+                      className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
+                        rowDensity === 'compact'
+                          ? 'bg-neutral-800 text-white border-neutral-700'
+                          : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+                      }`}
+                    >
+                      {rowDensity === 'compact' ? '紧凑行高' : '标准行高'}
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    onClick={handlePrefetchCovers}
+                    title="为当前列表条目获取封面（每次最多 200 条）：优先本地内嵌封面，其次 iTunes / 网易云"
+                    className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
+                      coverPrefetching
+                        ? 'bg-rose-950/70 text-rose-300 border-rose-800/60'
+                        : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+                    }`}
+                  >
+                    {coverPrefetching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Disc className="w-3.5 h-3.5" />}
+                    <span>{coverPrefetching ? '获取封面…' : '预取封面'}</span>
+                  </button>
+                  <button
+                    onClick={handlePrefetchLyrics}
+                    title="为当前列表条目获取歌词（网易云，每次最多 200 条），缓存到 fastmusic_lyrics.json；「只看有歌词」也依赖这份缓存"
+                    className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
+                      lyricPrefetching
+                        ? 'bg-sky-950/70 text-sky-300 border-sky-800/60'
+                        : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+                    }`}
+                  >
+                    {lyricPrefetching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Captions className="w-3.5 h-3.5" />}
+                    <span>{lyricPrefetching ? '获取歌词…' : '预取歌词'}</span>
+                  </button>
+                </div>
+                {(coverPrefetchInfo || lyricPrefetchInfo) && (
+                  <p className="mt-2 text-[11px] text-neutral-500 leading-relaxed">
+                    {coverPrefetchInfo && <span>{coverPrefetchInfo}</span>}
+                    {coverPrefetchInfo && lyricPrefetchInfo && <span className="mx-1.5">·</span>}
+                    {lyricPrefetchInfo && <span>{lyricPrefetchInfo}</span>}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
 
           {/* .mkv 换容器(remux)进度统计：已就绪 / 进行中 / 排队 */}
           {transcodeSummary && transcodeSummary.total_mkv > 0 && (

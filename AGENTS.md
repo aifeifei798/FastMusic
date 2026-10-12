@@ -178,6 +178,10 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   random 用 `seed` + `hashString`），持久在 `localStorage('fastmusic_sort')`；`default` 时 App 不传 sort。
   行密度按钮（标签显示当前模式：标准/紧凑）持久在 `localStorage('fastmusic_density')`，紧凑行 `py-1.5` + 24px 封面，
   专辑列换成时长列。工具栏是 `flex-wrap`，窄屏不会溢出。搜索防抖后工具栏显示「命中 N」。
+  **只看已转码 / 只看有歌词 / 排序 / 行密度 / 预取封面 / 预取歌词 都收进「筛选与工具」下拉**（`LibraryView.tsx`
+  的 `toolMenuOpen` + `toolMenuRef`）：面板 `absolute top-full right-0 z-40 w-[360px]`（用 `right-0` 而不是 `left-0`，
+  靠右的工具栏会让 `left-0` 的面板溢出视口右缘），点外部或 `Esc` 关闭；按钮上的小徽章（已转码 / 有歌词）表示当前生效的筛选。
+  标签数字用模块级 `fmtNum()` 缩写（33878 → 33.9k），1100px 宽也能一行装下。
 - **快捷键**: `J`/`K` 上一首/下一首（走 `prevNextRef` 避免闭包里的旧 index），`S` 收藏当前曲目，`L` 歌词开关，
   `R` 随心电台，`?` 打开快捷键面板，`Esc` 关闭。之前 `L` 同时绑定收藏和歌词，所以收藏改成 `S`。
 - **video.js copies the `<video>` element's className into its auto-created wrapper div at init, and the
