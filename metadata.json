@@ -1,6 +1,5 @@
 {
   "name": "FastMusic",
   "description": "FastMusic 高性能本地音乐与 MTV 流媒体播放器，支持多目录扫描与智能 ID3 标签解析，Video.js 深度定制内核与海量媒体流畅播放。",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "requestFramePermissions": []
 }

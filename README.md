@@ -40,7 +40,7 @@
 ./server.sh start        # 自动 npm install, 后台运行, 健康检查 /api/health
 ```
 
-打开 `http://localhost:3000`,在「服务器配置」里添加音乐目录,然后点扫描。
+打开 `http://localhost:3000`,在「服务器配置」里添加音乐目录,然后点扫描(或启动前设置 `MEDIA_DIRS="/music,/mtv"`)。
 
 其他命令:
 
@@ -53,6 +53,7 @@
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
 | `PORT` | `3000` | 服务端口 |
+| `MEDIA_DIRS` | 空 | 预置扫描目录,逗号或分号分隔,例如 `MEDIA_DIRS="/music,/mtv"`;也可在「服务器配置」UI 或 `POST /api/directories` 添加(配置持久化到 `fastmusic_db.json`) |
 | `PRETRANCODE_MKV` | 开启 | 设为 `0` 时禁用启动后的 mkv 后台预转码队列(按需转码仍生效) |
 | `NODE_ENV` | dev | `production` 时服务预构建的 `dist/`,否则内嵌 Vite dev server |
 

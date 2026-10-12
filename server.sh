@@ -165,7 +165,7 @@ start_server() {
   if [ -n "$lan_ip" ] && [ "$lan_ip" != "127.0.0.1" ]; then
     echo -e "  📱 局域网访问:  ${GREEN}http://${lan_ip}:${PORT}${NC}"
   fi
-  echo -e "  📁 媒体扫描目录: /home/feifei/mnt/data_4t/..."
+  echo -e "  📁 媒体扫描目录: ${YELLOW}在「服务器配置」中添加, 或设置 MEDIA_DIRS=\"/music,/mtv\"${NC}"
   echo -e "  📋 停止命令:    ${CYAN}./server.sh stop${NC}"
   echo -e "  🔄 重启命令:    ${CYAN}./server.sh restart${NC}"
   echo -e "  📄 查看日志:    ${CYAN}./server.sh logs${NC}"

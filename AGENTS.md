@@ -53,12 +53,13 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
 
 ## Gotchas
 
-- **README is stale/aspirational**: it tells you to set `GEMINI_API_KEY` in `.env.local`,
-  but there is **no `.env.local`**, `dotenv` and `@google/genai` are declared deps yet
-  **never imported or used** in any `.ts`/`.tsx`. The app runs with no Gemini key.
-- **Hardcoded scan dirs** at `server.ts:48-52`:
-  `/home/feifei/mnt/data_4t/KuGou/flac`, `.../youtube`, `.../youtube-music`. These are
-  user-specific. Configure real dirs via `POST /api/directories` or the ServerConfigModal UI.
+- **No AI/Gemini integration**: the project originated from Google AI Studio, but the unused
+  `dotenv` / `@google/genai` / `motion` deps and the `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API`
+  entry in `metadata.json` have been removed. There is no `.env.local` and no API key is needed.
+- **Scan dirs default to empty**: `CONFIGURED_DIRS` is seeded from `MEDIA_DIRS="/a,/b"` (comma or
+  semicolon separated) and then from `fastmusic_db.json`'s `dirs` array. Add real dirs via
+  `POST /api/directories` or the ServerConfigModal UI. (`bun.lock` was also dropped — npm is the
+  only toolchain; `server.sh` uses `npm install`.)
 - **Scan is persistent + incremental** (rewritten): the library is persisted to
   `fastmusic_db.json` next to `server.ts` (`{dirs, items[]}`, atomic tmp+rename). Startup
   calls `loadDbFromDisk()` (no more `MEDIA_DB.clear()`), so a restart keeps the index.

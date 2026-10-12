@@ -513,11 +513,12 @@ function saveDbToDisk(): void {
 }
 
 // Configured scan directories (supports multiple directories)
-let CONFIGURED_DIRS: string[] = [
-  '/home/feifei/mnt/data_4t/KuGou/flac',
-  '/home/feifei/mnt/data_4t/youtube',
-  '/home/feifei/mnt/data_4t/youtube-music'
-];
+// 默认为空: 用环境变量 MEDIA_DIRS="/path/a,/path/b" 预置, 或在「服务器配置」UI / POST /api/directories 添加。
+// 已保存的配置会从 fastmusic_db.json 恢复 (见 loadDbFromDisk)。
+let CONFIGURED_DIRS: string[] = (process.env.MEDIA_DIRS || '')
+  .split(/[,;]/)
+  .map((d) => d.trim())
+  .filter(Boolean);
 
 function generateId(relativePath: string): string {
   return crypto.createHash('md5').update(relativePath).digest('hex').substring(0, 12);
@@ -845,6 +846,9 @@ function scanLibrary(rootDir: string) {
 // 启动时不再加载任何演示/种子数据，库为空等待真实扫描
 // 从磁盘加载持久库（首次启动为空，等待真实扫描）
 loadDbFromDisk();
+if (CONFIGURED_DIRS.length === 0) {
+  console.warn('[Config] 未配置扫描目录。设置环境变量 MEDIA_DIRS="/music,/mtv" 或在「服务器配置」里添加后扫描。');
+}
 // 启动即排队后台预转码所有 .mkv（单并发、小文件优先），避免 MTV 首播黑屏等待
 queueAllMkvTranscodes();
 

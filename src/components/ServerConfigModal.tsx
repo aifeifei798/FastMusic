@@ -31,12 +31,8 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
 }) => {
   const [baseUrl, setBaseUrl] = useState<string>(mediaApi.getBaseUrl());
 
-  // Multiple scan directories list
-  const [directories, setDirectories] = useState<string[]>([
-    '/home/feifei/mnt/data_4t/KuGou/flac',
-    '/home/feifei/mnt/data_4t/youtube',
-    '/home/feifei/mnt/data_4t/youtube-music'
-  ]);
+  // Multiple scan directories list (空列表 = 尚未配置, 打开弹窗时从服务端读取)
+  const [directories, setDirectories] = useState<string[]>([]);
   const [newDirPath, setNewDirPath] = useState<string>('');
   
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string; trackCount?: number } | null>(null);
@@ -240,7 +236,7 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleAddDirectory();
                 }}
-                placeholder="输入绝对路径，例如 /home/feifei/mnt/data_4t/new_folder 或 D:/Music"
+                placeholder="输入绝对路径，例如 /home/you/Music 或 D:/Music"
                 className="flex-1 px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-neutral-200 font-mono text-xs focus:outline-none focus:border-rose-500"
               />
               <button
