@@ -13,9 +13,9 @@
 [![Docker image](https://img.shields.io/badge/image-ghcr.io%2Ffastmusic-2496ED)](https://github.com/aifeifei798/fastmusic/pkgs/container/fastmusic)
 [![Docker build](https://github.com/aifeifei798/FastMusic/actions/workflows/docker.yml/badge.svg)](https://github.com/aifeifei798/FastMusic/actions/workflows/docker.yml)
 
-![FastMusic 正在播放 4K MTV — 久しぶりのリップグロス ⧸ AKB48 60th Single](docs/mtv-preview.png)
+![FastMusic 正在播放音乐 — 9420 ⧸ 1个球 (FLAC)](docs/preview-zh.png)
 
-> 截图: 4K AV1 `.mkv` MTV 经服务端 remux 成 WebM 后直接播放,右侧为网易云歌词竖列(当前行居中高亮)。
+> 截图: 柱状频谱 + 旋转唱片(网易云封面) + 右侧网易云歌词竖列(当前行居中高亮),下方为媒体库列表。
 
 ```
 浏览器 (React SPA)  ⇄  Express (server.ts)  ⇄  本地音乐目录
@@ -188,6 +188,7 @@ src/
 | `docs/logo.png` (640×160) | 深色卡片横幅, README 顶部与 `og:image` |
 | `docs/logo-light.png` (640×160) | 浅色卡片横幅(白底 + 近黑文字 + 灰色副标题) |
 | `docs/logo-dark.png` (452×128) / `docs/logo-light-lockup.png` (432×128) / `docs/logo-mark-light.png` (256×256) / `docs/logo-mark.png` (256×256) | 位图导出(透明背景) |
+| `docs/preview-zh.png` / `docs/preview-en.png` (1440×757) | README 界面截图(中文 / 英文 UI) |
 
 - 页头 / 页脚的徽标是内联 SVG(`src/components/Logo.tsx`),几何与 `public/logo-mark.svg` 一致;改形状时两边要同步。
 

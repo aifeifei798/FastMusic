@@ -13,9 +13,9 @@ A local music / MTV streaming player. **React SPA + Express media backend**: it 
 [![Docker image](https://img.shields.io/badge/image-ghcr.io%2Ffastmusic-2496ED)](https://github.com/aifeifei798/fastmusic/pkgs/container/fastmusic)
 [![Docker build](https://github.com/aifeifei798/FastMusic/actions/workflows/docker.yml/badge.svg)](https://github.com/aifeifei798/FastMusic/actions/workflows/docker.yml)
 
-![FastMusic playing a 4K MTV — 久しぶりのリップグロス ⧸ AKB48 60th Single](docs/mtv-preview.png)
+![FastMusic playing a track — 9420 ⧸ 1个球 (FLAC)](docs/preview-en.png)
 
-> Screenshot: a 4K AV1 `.mkv` MTV remuxed to WebM by the server and played directly; the right column is a NetEase lyric rail (current line centred and highlighted).
+> Screenshot: bar spectrum + spinning vinyl (NetEase cover art) + a NetEase lyric rail on the right (current line centred and highlighted), with the media library below.
 
 ```
 Browser (React SPA)  ⇄  Express (server.ts)  ⇄  local music directories
@@ -188,6 +188,7 @@ Logo geometry: rounded square + vinyl record concentric grooves + a lightning bo
 | `docs/logo.png` (640×160) | Dark card banner, used at the top of the README and as `og:image` |
 | `docs/logo-light.png` (640×160) | Light card banner (white background, near-black text, grey subtitle) |
 | `docs/logo-dark.png` (452×128) / `docs/logo-light-lockup.png` (432×128) / `docs/logo-mark-light.png` (256×256) / `docs/logo-mark.png` (256×256) | Bitmap exports (transparent background) |
+| `docs/preview-zh.png` / `docs/preview-en.png` (1440×757) | README UI screenshots (Chinese / English interface) |
 
 - The header/footer logo is an inline SVG (`src/components/Logo.tsx`) with the same geometry as `public/logo-mark.svg`; if you change the shape, update both.
 
