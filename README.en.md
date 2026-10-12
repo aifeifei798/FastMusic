@@ -9,6 +9,7 @@ Current version **v0.1.0** · full history in [CHANGELOG.md](CHANGELOG.md)
 A local music / MTV streaming player. **React SPA + Express media backend**: it scans your local music directories, streams files over HTTP Range requests, and ships a real-time spectrum visualizer plus a 10-band equalizer.
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/release/aifeifei798/FastMusic.svg)](https://github.com/aifeifei798/FastMusic/releases)
 
 ![FastMusic playing a 4K MTV — 久しぶりのリップグロス ⧸ AKB48 60th Single](docs/mtv-preview.png)
 
