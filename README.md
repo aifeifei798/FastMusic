@@ -2,6 +2,10 @@
 
 本地音乐 / MTV 流媒体播放器。**React SPA + Express 媒体后端**,扫描本地音乐目录,通过 HTTP Range 流式播放,自带实时频谱可视化与 10 段均衡器。
 
+![FastMusic 正在播放 4K MTV — 久しぶりのリップグロス ⧸ AKB48 60th Single](docs/mtv-preview.png)
+
+> 截图: 4K AV1 `.mkv` MTV 经服务端 remux 成 WebM 后直接播放,右侧为网易云歌词竖列(当前行居中高亮)。
+
 ```
 浏览器 (React SPA)  ⇄  Express (server.ts)  ⇄  本地音乐目录
                         │
