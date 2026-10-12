@@ -42,6 +42,7 @@ export interface ServerMediaItem {
   abs_path?: string;
   mtime?: number; // 文件 mtimeMs，用于增量去重（已入库且未变更则 skip 重解析）
   transcode?: TranscodeInfo; // 仅响应里附带（不落库），列表显示转码状态
+  lyric?: 'yes' | 'no' | null; // 仅响应里附带：歌词缓存里是否有该曲的歌词（null = 未查过）
 }
 
 // In-Memory Database Map: key is media_id
@@ -123,6 +124,20 @@ function isSidecarFile(name: string): boolean {
   return MKV_SIDECAR_SUFFIXES.some((s) => name.endsWith(s));
 }
 
+// /api/tracks 排序用的小工具：稳定字符串比较（中文用 localeCompare）与确定性 hash
+function compareString(a: string, b: string): number {
+  return String(a || '').localeCompare(String(b || ''), 'zh-Hans-CN');
+}
+
+function hashString(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
 // 已存在且不比源文件旧的 sidecar → 直接复用
 function findFreshSidecar(srcPath: string, srcMtime: number): string | undefined {
   for (const ext of SIDECAR_OUT_EXTS) {
@@ -180,7 +195,11 @@ function transcodeSummary() {
 // /api/tracks 的响应里附带转码状态，前端列表直接显示"已转码/转码中/排队"
 function decorateItem(item: ServerMediaItem): ServerMediaItem {
   const info = transcodeInfo(item);
-  return info ? { ...item, transcode: info } : item;
+  // 歌词状态来自网易云缓存（内存 + fastmusic_lyrics.json）：只读，不触发网络请求。
+  // null = 还没查过（用户没播放过这首歌），'no' = 查过但网易云没有歌词。
+  const cached = lyricCache.get(lyricCacheKey(item.title, item.artist));
+  const lyric: 'yes' | 'no' | null = cached ? (cached.found ? 'yes' : 'no') : null;
+  return { ...item, ...(info ? { transcode: info } : {}), lyric };
 }
 
 // Chrome 的 libwebm demuxer 能解 AV1/VP9（实测本机 headless+真实 Chrome 都出画面，
@@ -981,7 +1000,9 @@ app.get('/api/tracks', (req: Request, res: Response) => {
   const search = (req.query.search as string | undefined)?.toLowerCase();
   // ready_only=1: 只返回"立刻可播"的条目（非 .mkv，或 .mkv 的 sidecar 已就绪）
   const readyOnly = req.query.ready_only === '1' || req.query.ready_only === 'true';
-  
+  // sort: title | artist | album | duration | size | mtime | random（默认 = 索引顺序）
+  const sort = (req.query.sort as string | undefined) || 'default';
+
   // limit / offset 分页参数
   const limitQuery = req.query.limit !== undefined ? parseInt(req.query.limit as string, 10) : undefined;
   const offsetQuery = req.query.offset !== undefined ? parseInt(req.query.offset as string, 10) : undefined;
@@ -1005,6 +1026,30 @@ app.get('/api/tracks', (req: Request, res: Response) => {
   }
 
   const total = results.length;
+
+  // 排序（默认保持索引顺序）。random 用稳定伪随机（seed 由请求参数决定，分页时一致）
+  if (sort !== 'default') {
+    if (sort === 'random') {
+      const seed = parseInt(req.query.seed as string, 10) || 0;
+      results.sort((a, b) => {
+        const ha = hashString(`${a.id}:${seed}`);
+        const hb = hashString(`${b.id}:${seed}`);
+        return ha - hb;
+      });
+    } else {
+      results.sort((a, b) => {
+        switch (sort) {
+          case 'title': return compareString(a.title, b.title);
+          case 'artist': return compareString(a.artist, b.artist);
+          case 'album': return compareString(a.album, b.album);
+          case 'duration': return (a.duration || 0) - (b.duration || 0);
+          case 'size': return (a.file_size || 0) - (b.file_size || 0);
+          case 'mtime': return (a.mtime || 0) - (b.mtime || 0);
+          default: return 0;
+        }
+      });
+    }
+  }
 
   // 1. 如果使用了 limit / offset
   if (limitQuery !== undefined || offsetQuery !== undefined) {

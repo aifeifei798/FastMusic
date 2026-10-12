@@ -305,6 +305,24 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   // 歌词竖列: 把当前行平移到窗口垂直中心 (translateY), 上下行淡出
   const lyricBoxRef = useRef<HTMLDivElement | null>(null);
   const [lyricOffset, setLyricOffset] = useState(0);
+  // 歌词字号(px) 与视频时歌词列宽度(px)，都持久化
+  const [lyricFont, setLyricFont] = useState<number>(() => {
+    try {
+      const v = parseInt(localStorage.getItem('fastmusic_lyric_font') || '13', 10);
+      return Number.isFinite(v) && v > 0 ? v : 13;
+    } catch {
+      return 13;
+    }
+  });
+  const [lyricWidth, setLyricWidth] = useState<number>(() => {
+    try {
+      const v = parseInt(localStorage.getItem('fastmusic_lyric_width') || '340', 10);
+      return Number.isFinite(v) && v > 0 ? v : 340;
+    } catch {
+      return 340;
+    }
+  });
+  const [showLyricSettings, setShowLyricSettings] = useState<boolean>(false);
 
   useEffect(() => {
     if (!currentTrack) {
@@ -942,9 +960,12 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className={`relative w-full bg-neutral-950 flex flex-col justify-between overflow-hidden transition-all duration-300 ${
-        isFullscreen ? 'h-screen w-screen' : isTheaterMode ? 'h-[580px] rounded-2xl border border-neutral-800 shadow-2xl' : 'h-[440px] rounded-2xl border border-neutral-800/80 shadow-xl'
-      } ${isFullscreen && isVideo && !showControls ? 'cursor-none' : ''}`}
+      // video.js 主题覆盖用 arbitrary variant 写(后代选择器), 不再手写 CSS 规则。
+      // 注意: video.js 会在运行时注入 <style class="vjs-styles-defaults">(.video-js{width:300px;height:150px}),
+      // 它不在任何 @layer 里, 优先级高于 Tailwind 的 utilities layer, 所以这些覆盖必须加 ! 后缀。
+      className={`relative w-full bg-neutral-950 flex flex-col justify-between overflow-hidden transition-all duration-300 [&_.vjs-custom-theme]:font-[inherit]! [&_.vjs-custom-theme]:bg-transparent! [&_.vjs-custom-theme]:w-full! [&_.vjs-custom-theme]:h-full! [&_.vjs-custom-theme_.vjs-tech]:object-contain! [&_.video-js:focus]:outline-none! ${
+        isFullscreen ? 'h-screen w-screen' : isTheaterMode ? 'h-[clamp(300px,calc(100vh-300px),580px)] rounded-2xl border border-neutral-800 shadow-2xl' : 'h-[clamp(240px,calc(100vh-420px),440px)] rounded-2xl border border-neutral-800/80 shadow-xl'
+      }`}
     >
       {/* Top Overlay Badge & Header Info */}
       <div
@@ -1102,7 +1123,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
       {/* Main Media Viewport */}
       <div 
-        className="relative flex-1 w-full h-full flex items-center justify-center bg-black cursor-pointer overflow-hidden"
+        // 全屏沉浸: 控制栏隐藏时指针也消失。video.js 的 wrapper/<video> 继承这里的 cursor,
+        // 所以直接切换这个容器的 utility 即可(不需要 .cursor-none 后代覆盖规则)。
+        className={`relative flex-1 w-full h-full flex items-center justify-center bg-black overflow-hidden ${
+          isFullscreen && isVideo && !showControls ? 'cursor-none' : 'cursor-pointer'
+        }`}
         onClick={togglePlay}
       >
         {/* The Video.js underlying element.
@@ -1170,7 +1195,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       {currentTrack && (
         <div
           className={`absolute inset-0 z-[15] pointer-events-none grid gap-4 px-5 sm:px-7 ${
-            isVideo ? 'grid-cols-[1fr_340px]' : 'grid-cols-[1fr_240px_1fr]'
+            isVideo ? `grid-cols-[1fr_${lyricWidth}px]` : 'grid-cols-[1fr_240px_1fr]'
           }`}
           style={{
             gridTemplateRows: '1fr',
@@ -1228,7 +1253,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               )}
 
               {lyricStatus === 'found' && (
-                <div ref={lyricBoxRef} className="relative flex-1 min-h-0 overflow-hidden lyric-window">
+                <div
+                  ref={lyricBoxRef}
+                  className="relative flex-1 min-h-0 overflow-hidden [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,#000_26%,#000_74%,transparent_100%)] [mask-image:linear-gradient(to_bottom,transparent_0%,#000_26%,#000_74%,transparent_100%)]"
+                >
                   <div
                     className="flex flex-col gap-2 transition-transform duration-500 ease-out"
                     style={{ transform: `translateY(${-lyricOffset}px)` }}
@@ -1240,7 +1268,15 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                         <p
                           key={i}
                           data-lyric-idx={i}
-                          className={`lyric-line ${d === 0 ? 'lyric-active' : d < 0 ? 'lyric-past' : 'lyric-next'}`}
+                          // 字号来自歌词设置(动态值用 inline style, 其余全部是 utility 类)
+                          style={{ fontSize: d === 0 ? lyricFont + 3 : lyricFont }}
+                          className={`font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.5] tracking-[0.01em] text-white/34 [text-shadow:0_1px_6px_rgba(0,0,0,0.5)] transition-[color,opacity] duration-300 ${
+                            d === 0
+                              ? 'text-white font-semibold pl-2.5 border-l-2 border-rose-500/55 [text-shadow:0_1px_8px_rgba(0,0,0,0.6),0_0_22px_rgba(244,63,94,0.2)]'
+                              : d < 0
+                              ? 'opacity-50'
+                              : 'opacity-[0.85]'
+                          }`}
                         >
                           {line.text}
                           {trans && (
@@ -1255,6 +1291,54 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 </div>
               )}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* 歌词样式面板 — 字号 + (视频时) 歌词列宽度, 持久在 localStorage */}
+      {showLyricSettings && (
+        <div className="absolute right-4 bottom-16 z-40 w-64 rounded-xl bg-neutral-950/85 border border-neutral-800 p-3 flex flex-col gap-2 shadow-2xl">
+          <div className="text-[11px] font-semibold text-neutral-300">歌词样式</div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-neutral-500">字号</span>
+            {[12, 14, 17].map((v) => (
+              <button
+                key={v}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLyricFont(v);
+                  try { localStorage.setItem('fastmusic_lyric_font', String(v)); } catch {}
+                }}
+                className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                  lyricFont === v ? 'bg-rose-600/20 text-rose-300 border border-rose-500/40' : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                }`}
+              >
+                {v === 12 ? '小' : v === 14 ? '中' : '大'}
+              </button>
+            ))}
+          </div>
+          {isVideo && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-neutral-500">宽度</span>
+              {[240, 340, 420].map((v) => (
+                <button
+                  key={v}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLyricWidth(v);
+                    try { localStorage.setItem('fastmusic_lyric_width', String(v)); } catch {}
+                  }}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                    lyricWidth === v ? 'bg-rose-600/20 text-rose-300 border border-rose-500/40' : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  {v === 240 ? '窄' : v === 340 ? '标准' : '宽'}
+                </button>
+              ))}
+            </div>
+          )}
+          {!showLyrics && (
+            <p className="text-[10px] text-neutral-500">歌词当前关闭 — 打开后设置生效</p>
           )}
         </div>
       )}
@@ -1575,6 +1659,20 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               }`}
             >
               <Captions className="w-4 h-4" />
+            </button>
+
+            {/* 歌词样式设置 (字号 / 视频时歌词列宽度) */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowLyricSettings((v) => !v);
+              }}
+              title="歌词字号与宽度"
+              className={`px-2 py-1 rounded-lg text-[11px] font-semibold hover:bg-neutral-800/80 transition-colors ${
+                showLyricSettings ? 'text-rose-400' : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              Aa
             </button>
 
             {/* 均衡器 面板开关 (moved from top bar) */}

@@ -146,13 +146,25 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   画面比容器窄时歌词会左移贴画面边缘而不是悬在黑色上。
   当前行始终居中：`lyricBoxRef` 是 `relative`，effect 用
   `el.offsetTop - box.clientHeight/2 + el.offsetHeight/2` 算出 `lyricOffset`，内层 div `translateY(-offset)`
-  （offset 可为负，前奏时列表需下移），上下行按距离淡出，窗口上下边缘用 CSS `mask-image` 渐隐
-  （`.lyric-window` / `.lyric-active` 在 `src/index.css`，歌词用 Noto Serif CJK SC 衬线体）。
+  （offset 可为负，前奏时列表需下移），上下行按距离淡出，窗口上下边缘用 Tailwind arbitrary property `[-webkit-mask-image:linear-gradient(...)]` 渐隐（歌词行没有自定义 CSS 类，全是 utility 类；字号是动态值，用 inline `style={{ fontSize }}`）
+  歌词用 Noto Serif CJK SC 衬线体；控制栏的 "Aa" 按钮打开歌词样式面板（字号 12/14/17 → `localStorage('fastmusic_lyric_font')`，视频时歌词列宽 240/340/420 → `localStorage('fastmusic_lyric_width')`）。
   开关是控制栏的 Captions 按钮或 `L` 键，持久在 `localStorage('fastmusic_lyrics')`（默认开启）。
 - **全屏沉浸隐藏鼠标指针**: 控制栏自动隐藏（播放中 3.5s 无鼠标移动 / 鼠标离开播放区）后，
-  全屏视频时容器加 `cursor-none`；但 video.js 自带 `.video-js`/`<video>` 的 `cursor: pointer`
-  会覆盖容器上的 `cursor: none`，所以 `src/index.css` 里有 `.cursor-none .video-js / .cursor-none video { cursor: none }`
-  显式覆盖后代元素。控制栏可见时指针恢复（方便点击按钮）。
+  全屏视频时播放视口 div 的条件 utility 类切成 `cursor-none`（`VideoJsPlayer.tsx`），
+  video.js 的 wrapper/`<video>` 继承该值，所以不再需要 `.cursor-none` 的后代覆盖规则。
+  控制栏可见时恢复 `cursor-pointer`（方便点击按钮）。
+- **样式全部用 Tailwind utility 类**: `src/index.css` 只有两个 `@import`（tailwindcss + video.js 官方 CSS），
+  没有手写规则。滚动条用 arbitrary variant 挂在每个滚动容器上（共享常量 `SCROLLBAR_CLASSES` /
+  `NO_SCROLLBAR_CLASSES` 在 `src/utils/ui.ts`，因为 `::-webkit-scrollbar` 伪元素不能从祖先继承）。
+  坑: video.js 运行时注入 `<style class="vjs-styles-defaults">`（`.video-js { width:300px; height:150px }`），
+  它不在任何 `@layer` 里，优先级高于 Tailwind 的 utilities layer，所以对 video.js 的覆盖必须加 `!`
+  后缀（如 `[&_.vjs-custom-theme]:w-full!`），否则 wrapper 只有 300px 宽 → 画面被挤成窄条。
+- **列表排序与行密度**: 工具栏的 `<select>` 走服务端 `sort` 参数（`default|title|artist|album|duration|size|mtime|random`，
+  random 用 `seed` + `hashString`），持久在 `localStorage('fastmusic_sort')`；`default` 时 App 不传 sort。
+  行密度按钮（标签显示当前模式：标准/紧凑）持久在 `localStorage('fastmusic_density')`，紧凑行 `py-1.5` + 24px 封面，
+  专辑列换成时长列。工具栏是 `flex-wrap`，窄屏不会溢出。搜索防抖后工具栏显示「命中 N」。
+- **快捷键**: `J`/`K` 上一首/下一首（走 `prevNextRef` 避免闭包里的旧 index），`S` 收藏当前曲目，`L` 歌词开关，
+  `R` 随心电台，`?` 打开快捷键面板，`Esc` 关闭。之前 `L` 同时绑定收藏和歌词，所以收藏改成 `S`。
 - **video.js copies the `<video>` element's className into its auto-created wrapper div at init, and the
   wrapper's classes never change afterwards.** `VideoJsPlayer.tsx` must keep the `<video>` classes STATIC
   (`video-js vjs-custom-theme w-full h-full`). Conditional visibility classes (e.g. `!isVideo ? 'opacity-0

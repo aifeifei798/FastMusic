@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { mediaApi } from '../services/api';
 import { ScanResponse } from '../types/media';
+import { SCROLLBAR_CLASSES } from '../utils/ui';
 
 interface ServerConfigModalProps {
   isOpen: boolean;
@@ -142,7 +143,7 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-6 overflow-y-auto text-xs text-neutral-300">
+        <div className={`p-6 space-y-6 overflow-y-auto text-xs text-neutral-300 ${SCROLLBAR_CLASSES}`}>
           {/* Service Base URL & Test */}
           <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800/80 space-y-3">
             <div className="flex items-center justify-between">

@@ -13,7 +13,7 @@
 ## ✨ 功能
 
 - **媒体库扫描**: 增量扫描(已索引且未变化的文件跳过),损坏/无法解码的文件自动排除;索引持久化,重启不丢。
-- **浏览与搜索**: 按歌手 / 专辑 / 曲目浏览,关键词搜索,分页加载,字母索引,随心电台,播放历史,收藏。
+- **浏览与搜索**: 按歌手 / 专辑 / 曲目浏览,关键词搜索(防抖 + 命中数),分页加载,字母索引,随心电台,播放历史,收藏;服务端排序(标题 / 歌手 / 专辑 / 时长 / 大小 / 文件日期 / 随机)与标准 / 紧凑两种行密度。
 - **MTV 播放**: Chrome 无法直接解析 Matroska(`.mkv`)容器,服务端按视频 codec 自动处理:
   - 视频已是 **H.264** → 纯 remux 到 MP4(`-c copy`,秒级,几乎零 CPU);
   - 视频为 **AV1/HEVC** 等 → 转码为 VP9 WebM(一次性,缓存 sidecar `*.mkv.webm`);
@@ -21,6 +21,9 @@
 - **音频播放**: 视频.js 音频图 `source → 10 段 BiquadFilter EQ → boostGain → analyser → destination`;条形 / 光晕环 / 对称 EQ 三种频谱可视化;EQ 状态持久化到 localStorage。
 - **音量增强 ×2**: 默认音量 70%,音量滑块旁有 ×2 增强开关(靠音频图里的 GainNode 实现,状态持久化到 localStorage `fastmusic_boost`)。
 - **控制栏自动隐藏**: 播放中 3.5 秒无鼠标操作自动隐藏,鼠标进入播放区重新显示,离开立即隐藏(音频与视频统一)。
+- **歌词**: 网易云歌词竖列(当前行居中高亮,上下行淡出),控制栏 Captions 按钮或 `L` 切换,"Aa" 面板可调字号与(视频时)歌词列宽。
+- **快捷键**: `J`/`K` 上一首/下一首, `S` 收藏, `L` 歌词, `R` 随心电台, `?` 快捷键面板, `Esc` 关闭。
+- **样式**: 全部用 Tailwind utility 类(含 arbitrary variant / arbitrary property),`src/index.css` 只有两个 `@import`,没有手写 CSS 规则。
 
 ## 🚀 快速开始
 
@@ -64,6 +67,7 @@ src/
     LibraryView.tsx    # 媒体库列表 (内部滚动 + 增量加载)
     ...
   services/api.ts      # 客户端 API 单例
+  utils/ui.ts          # 共享 Tailwind 类常量(滚动条样式)
   types/media.ts       # 共享类型, 与 server 响应形状一致
 ```
 
@@ -76,7 +80,7 @@ src/
 | `POST /api/scan` | 增量扫描;`?force=1` 清空并全量重扫 |
 | `GET /api/artists` | 歌手列表(含封面) |
 | `GET /api/albums` | 专辑列表 |
-| `GET /api/tracks` | 曲目列表,支持过滤 + `limit/offset` 或 `page/page_size`;`ready_only=1` 只返回可直接播的条目(非 `.mkv` 或 sidecar 已就绪) |
+| `GET /api/tracks` | 曲目列表,支持过滤 + `limit/offset` 或 `page/page_size`;`sort=title|artist|album|duration|size|mtime|random`(random 用 `seed`);`ready_only=1` 只返回可直接播的条目(非 `.mkv` 或 sidecar 已就绪) |
 | `GET /api/radio` | 随心电台 |
 | `GET /api/tracks/:id` | 曲目详情 |
 | `GET /api/stream/:id` | 流式播放(206 Range;`.mkv` 自动 remux/转码) |

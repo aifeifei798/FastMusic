@@ -9,7 +9,7 @@ import {
   Sparkles,
   Heart
 } from 'lucide-react';
-import { MediaItem, ArtistSummary, AlbumSummary, PlayMode, PlayHistoryItem, RadioChannel } from './types/media';
+import { MediaItem, ArtistSummary, AlbumSummary, PlayMode, PlayHistoryItem, RadioChannel, TrackSort } from './types/media';
 import { mediaApi } from './services/api';
 import { VideoJsPlayer } from './components/VideoJsPlayer';
 import { LibraryView } from './components/LibraryView';
@@ -53,7 +53,22 @@ export default function App() {
   const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
   const [selectedAlbum, setSelectedAlbum] = useState<string | null>(null);
   const [mediaTypeFilter, setMediaTypeFilter] = useState<'all' | 'audio' | 'video'>('all');
+  // 搜索: searchInput 是输入框里的即时文本, searchQuery 是防抖后真正用于请求的文本
+  const [searchInput, setSearchInput] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  // 列表排序键（持久化）
+  const [sort, setSort] = useState<TrackSort>(() => {
+    try {
+      const s = localStorage.getItem('fastmusic_sort');
+      return (s as TrackSort) || 'default';
+    } catch {
+      return 'default';
+    }
+  });
+  // 列表行密度: comfortable / compact（持久化）
+  const [rowDensity, setRowDensity] = useState<'comfortable' | 'compact'>(() => {
+    try { return localStorage.getItem('fastmusic_density') === 'compact' ? 'compact' : 'comfortable'; } catch { return 'comfortable'; }
+  });
   // 只看"已转码/可直接播"的 .mkv（排队/转码中的隐藏）。持久化到 localStorage。
   const [readyOnly, setReadyOnly] = useState<boolean>(() => {
     try { return localStorage.getItem('fastmusic_ready_only') === '1'; } catch { return false; }
@@ -70,6 +85,9 @@ export default function App() {
   const [playMode, setPlayMode] = useState<PlayMode>('loop-all');
   // 是否已经选过曲目（避免切筛选时把播放区重置成列表第一条）
   const hasSelectionRef = useRef<boolean>(false);
+  // 上一首/下一首的最新实现（handlePrevTrack/handleNextTrack 每次 render 都重建，
+  // 全局 keydown 闭包必须通过 ref 读取最新版本）
+  const prevNextRef = useRef<{ prev: () => void; next: () => void }>({ prev: () => {}, next: () => {} });
   const [isTheaterMode, setIsTheaterMode] = useState<boolean>(false);
 
   // Radio mode state (随心电台)
@@ -93,7 +111,8 @@ export default function App() {
           artist: selectedArtist || undefined,
           album: selectedAlbum || undefined,
           media_type: mediaTypeFilter === 'all' ? undefined : mediaTypeFilter,
-          search: searchQuery.trim() || undefined,
+          search: searchQuery || undefined,
+          sort: sort === 'default' ? undefined : sort,
           ready_only: readyOnly || undefined,
           limit: 30,
           offset: 0,
@@ -117,7 +136,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly]);
+  }, [selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly, sort]);
 
   // Load More Tracks on scroll near bottom (limit=30, offset=currentLength)
   const handleLoadMore = useCallback(async () => {
@@ -128,7 +147,8 @@ export default function App() {
         artist: selectedArtist || undefined,
         album: selectedAlbum || undefined,
         media_type: mediaTypeFilter === 'all' ? undefined : mediaTypeFilter,
-        search: searchQuery.trim() || undefined,
+        search: searchQuery || undefined,
+        sort: sort === 'default' ? undefined : sort,
         ready_only: readyOnly || undefined,
         limit: 30,
         offset: tracks.length,
@@ -144,7 +164,7 @@ export default function App() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMore, selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly, tracks.length]);
+  }, [isLoadingMore, hasMore, selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly, sort, tracks.length]);
 
   // 「只看已转码」开关：持久化，切换后 loadData 依赖 readyOnly 会自动重新拉取
   const handleToggleReadyOnly = useCallback(() => {
@@ -154,6 +174,26 @@ export default function App() {
       return next;
     });
   }, []);
+
+  // 排序 / 行密度开关（都持久化）
+  const handleSortChange = useCallback((next: TrackSort) => {
+    setSort(next);
+    try { localStorage.setItem('fastmusic_sort', next); } catch {}
+  }, []);
+
+  const handleToggleDensity = useCallback(() => {
+    setRowDensity((prev) => {
+      const next = prev === 'comfortable' ? 'compact' : 'comfortable';
+      try { localStorage.setItem('fastmusic_density', next); } catch {}
+      return next;
+    });
+  }, []);
+
+  // 搜索防抖: 输入框文本 300ms 后才触发请求，避免每键一次全库扫描
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   useEffect(() => {
     loadData();
@@ -316,13 +356,14 @@ export default function App() {
     setPlayMode('loop-all');
   };
 
-  // 全局键盘监听: R 键快速进入/退出随心电台模式
+  // 全局键盘监听: R 电台 / S 收藏 / J/K 上一首下一首 / ? 快捷键面板
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
         return;
       }
-      if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const bare = !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (e.code === 'KeyR' && bare) {
         e.preventDefault();
         if (isRadioMode) {
           handleExitRadio();
@@ -330,9 +371,21 @@ export default function App() {
           startRadioMode('all');
         }
       }
-      if (e.code === 'KeyL' && !e.ctrlKey && !e.metaKey && !e.altKey && currentTrack) {
+      if (e.code === 'KeyS' && bare && currentTrack) {
         e.preventDefault();
         handleToggleFavorite(currentTrack);
+      }
+      if (e.code === 'KeyJ' && bare) {
+        e.preventDefault();
+        prevNextRef.current.prev();
+      }
+      if (e.code === 'KeyK' && bare) {
+        e.preventDefault();
+        prevNextRef.current.next();
+      }
+      if (e.key === '?' && bare) {
+        e.preventDefault();
+        setShowShortcutsModal((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -390,6 +443,9 @@ export default function App() {
     setCurrentTrack(playlist[idx]);
   };
 
+  // 键盘 J/K 走 ref，避免全局 keydown 闭包捕获旧的 playlist/currentIndex
+  prevNextRef.current = { prev: handlePrevTrack, next: handleNextTrack };
+
   const handleQuickScan = async () => {
     setIsScanning(true);
     try {
@@ -406,7 +462,7 @@ export default function App() {
     <div className="h-screen overflow-hidden bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-rose-500/30 selection:text-rose-200">
       {/* ================= ZONE 1, 2, 3: TOP BAR CONTRACT ================= */}
       <header className="sticky top-0 z-40 w-full bg-neutral-950/90 backdrop-blur-md border-b border-neutral-800/80">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-6">
           {/* Zone 1: Single Wordmark Brand */}
           <div className="flex items-center gap-3 shrink-0">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-rose-600 to-amber-500 flex items-center justify-center text-white shadow-md shadow-rose-950/40">
@@ -417,71 +473,7 @@ export default function App() {
             </span>
           </div>
 
-          {/* Zone 2: Concise Nav Links */}
-          <nav className="hidden md:flex items-center gap-7 text-xs font-medium text-neutral-400">
-            <button
-              onClick={() => {
-                setSelectedArtist(null);
-                setSelectedAlbum(null);
-                setMediaTypeFilter('all');
-              }}
-              className="hover:text-white transition-colors whitespace-nowrap cursor-pointer"
-            >
-              全部媒体
-            </button>
-            <button
-              onClick={() => setMediaTypeFilter('video')}
-              className={`hover:text-white transition-colors whitespace-nowrap cursor-pointer ${
-                mediaTypeFilter === 'video' ? 'text-rose-400 font-semibold' : ''
-              }`}
-            >
-              MTV 视频
-            </button>
-            <button
-              onClick={() => setMediaTypeFilter('audio')}
-              className={`hover:text-white transition-colors whitespace-nowrap cursor-pointer ${
-                mediaTypeFilter === 'audio' ? 'text-rose-400 font-semibold' : ''
-              }`}
-            >
-              无损音乐
-            </button>
-            <button
-              onClick={() => startRadioMode('all')}
-              className={`transition-all flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 rounded-lg cursor-pointer ${
-                isRadioMode
-                  ? 'bg-rose-600/20 text-rose-300 font-semibold border border-rose-500/40 shadow-sm'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <Radio className={`w-3.5 h-3.5 ${isRadioMode ? 'text-rose-400 animate-pulse' : 'text-rose-400'}`} />
-              <span>随心电台</span>
-              {isRadioMode && (
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping ml-0.5" />
-              )}
-            </button>
-            <button
-              onClick={() => {
-                setSelectedArtist(null);
-                setSelectedAlbum(null);
-                setLibraryActiveTab('favorites');
-              }}
-              className={`hover:text-rose-400 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                libraryActiveTab === 'favorites' ? 'text-rose-400 font-semibold' : ''
-              }`}
-            >
-              <Heart className={`w-3.5 h-3.5 ${favorites.length > 0 ? 'text-rose-500 fill-rose-500' : 'text-neutral-400'}`} />
-              <span>我的收藏 ({favorites.length})</span>
-            </button>
-            <button
-              onClick={() => setIsHistoryModalOpen(true)}
-              className="text-neutral-400 hover:text-white font-medium transition-colors flex items-center gap-1 whitespace-nowrap cursor-pointer"
-            >
-              <History className="w-3.5 h-3.5 text-rose-400" />
-              <span>播放历史 ({history.length})</span>
-            </button>
-          </nav>
-
-          {/* Zone 3: Primary Action Points */}
+          {/* Zone 2: Primary Action Points — 筛选/收藏/历史都在列表工具栏, 页头不重复 */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <button
               onClick={() => (isRadioMode ? handleExitRadio() : startRadioMode('all'))}
@@ -527,6 +519,14 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setShowShortcutsModal(true)}
+              title="快捷键说明 (?)"
+              className="p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+            >
+              <Keyboard className="w-4 h-4" />
+            </button>
+
+            <button
               onClick={() => setIsServerModalOpen(true)}
               className="px-3.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-medium text-neutral-200 hover:text-white transition-colors flex items-center gap-2 shadow-sm"
             >
@@ -539,10 +539,10 @@ export default function App() {
       </header>
 
       {/* Main App Canvas */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-8">
+      <main className="flex-1 min-h-0 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col gap-4">
 
         {/* ================= HERO MEDIA PLAYER SECTION ================= */}
-        <section className="w-full flex flex-col gap-4">
+        <section className="w-full flex flex-col gap-3">
           {/* Radio Station Banner (rendered when in radio mode) */}
           <RadioStationBanner
             isRadioMode={isRadioMode}
@@ -569,83 +569,65 @@ export default function App() {
             />
           </div>
 
-          {/* Current Playing Track Context Card */}
+          {/* 正在播放信息条: 一行搞定（封面 + 标题/歌手 + 技术规格 + 收藏），不再占用整张卡片 */}
           {currentTrack && (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-neutral-900/60 rounded-2xl border border-neutral-800/80">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-neutral-800 border border-neutral-700 flex items-center justify-center text-rose-400 font-bold overflow-hidden shrink-0">
-                  {currentTrack.cover_url ? (
-                    <img
-                      src={currentTrack.cover_url}
-                      alt={currentTrack.title}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <Tv className="w-5 h-5" />
-                  )}
-                </div>
-
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="font-semibold text-sm text-neutral-100 truncate">
-                      {currentTrack.title}
-                    </div>
-                    {favoriteIds.has(currentTrack.id) && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-500/15 text-rose-400 border border-rose-500/30 shrink-0">
-                        <Heart className="w-2.5 h-2.5 fill-rose-500 text-rose-500" />
-                        <span>已收藏</span>
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-neutral-400 flex items-center gap-2 mt-0.5">
-                    <span className="text-rose-400 font-medium">{currentTrack.artist}</span>
-                    <span aria-hidden="true" className="text-neutral-600">·</span>
-                    <span className="truncate">{currentTrack.album}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Side: Favorite Heart Button + Stream technical specs */}
-              <div className="flex flex-wrap items-center gap-3 sm:gap-4 shrink-0">
-                {/* '收藏' (Heart) 按钮 */}
-                <button
-                  onClick={() => handleToggleFavorite(currentTrack)}
-                  title={favoriteIds.has(currentTrack.id) ? '点击取消收藏 (快捷键 L)' : '保存到收藏列表 (快捷键 L)'}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95 cursor-pointer ${
-                    favoriteIds.has(currentTrack.id)
-                      ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/50 shadow-rose-950/40'
-                      : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white border border-neutral-700/80'
-                  }`}
-                >
-                  <Heart
-                    className={`w-4 h-4 transition-all duration-200 ${
-                      favoriteIds.has(currentTrack.id)
-                        ? 'fill-rose-500 text-rose-500 scale-110'
-                        : 'text-neutral-400 hover:text-rose-400'
-                    }`}
+            <div className="flex flex-wrap items-center gap-3 px-3 py-2 bg-neutral-900/50 rounded-xl border border-neutral-800/60">
+              <div className="w-8 h-8 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center text-rose-400 overflow-hidden shrink-0">
+                {currentTrack.cover_url ? (
+                  <img
+                    src={currentTrack.cover_url}
+                    alt={currentTrack.title}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
                   />
-                  <span>{favoriteIds.has(currentTrack.id) ? '已收藏' : '收藏'}</span>
-                </button>
-
-                {/* Technical stream details (unboxed typography) */}
-                <div className="flex items-center gap-3 sm:gap-4 text-xs font-mono text-neutral-400">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-neutral-500">封装:</span>
-                    <span className="uppercase text-neutral-200">{currentTrack.ext}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-neutral-500">大小:</span>
-                    <span className="text-neutral-200 tabular-nums">
-                      {(currentTrack.file_size / (1024 * 1024)).toFixed(1)} MB
-                    </span>
-                  </div>
-                  <div className="hidden md:flex items-center gap-1.5">
-                    <span className="text-neutral-500">接口:</span>
-                    <span className="text-neutral-300 truncate max-w-xs">{currentTrack.stream_url}</span>
-                  </div>
-                </div>
+                ) : (
+                  <Tv className="w-4 h-4" />
+                )}
               </div>
+
+              <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-sm text-neutral-100 truncate">{currentTrack.title}</span>
+                <span className="text-xs text-rose-400 font-medium truncate">{currentTrack.artist || '未知歌手'}</span>
+                {currentTrack.album && (
+                  <span className="text-[11px] text-neutral-500 truncate hidden sm:inline">{currentTrack.album}</span>
+                )}
+              </div>
+
+              {/* 技术规格 + 转码状态（接口 URL 只在 title 里, 不占版面） */}
+              <div className="flex items-center gap-2 text-[11px] font-mono text-neutral-400 shrink-0" title={currentTrack.stream_url}>
+                <span className="uppercase text-neutral-200">{currentTrack.ext}</span>
+                <span aria-hidden="true" className="text-neutral-600">·</span>
+                <span className="tabular-nums">{(currentTrack.file_size / (1024 * 1024)).toFixed(1)} MB</span>
+                {currentTrack.transcode && (
+                  <>
+                    <span aria-hidden="true" className="text-neutral-600">·</span>
+                    <span className={currentTrack.transcode.status === 'ready' ? 'text-emerald-400' : 'text-amber-400'}>
+                      {currentTrack.transcode.status === 'ready'
+                        ? `${currentTrack.transcode.container}`
+                        : `转码 ${currentTrack.transcode.status}`}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              <button
+                onClick={() => handleToggleFavorite(currentTrack)}
+                title={favoriteIds.has(currentTrack.id) ? '点击取消收藏 (快捷键 S)' : '保存到收藏列表 (快捷键 S)'}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                  favoriteIds.has(currentTrack.id)
+                    ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/50'
+                    : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white border border-neutral-700/80'
+                }`}
+              >
+                <Heart
+                  className={`w-3.5 h-3.5 transition-all duration-200 ${
+                    favoriteIds.has(currentTrack.id)
+                      ? 'fill-rose-500 text-rose-500 scale-110'
+                      : 'text-neutral-400 hover:text-rose-400'
+                  }`}
+                />
+                <span>{favoriteIds.has(currentTrack.id) ? '已收藏' : '收藏'}</span>
+              </button>
             </div>
           )}
         </section>
@@ -672,8 +654,12 @@ export default function App() {
             onFilterMediaType={setMediaTypeFilter}
             readyOnly={readyOnly}
             onToggleReadyOnly={handleToggleReadyOnly}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
+            sort={sort}
+            onSortChange={handleSortChange}
+            rowDensity={rowDensity}
+            onToggleDensity={handleToggleDensity}
+            searchQuery={searchInput}
+            onSearchChange={setSearchInput}
             favoriteIds={favoriteIds}
             favorites={favorites}
             onToggleFavorite={handleToggleFavorite}
@@ -684,10 +670,10 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="mt-12 border-t border-neutral-900 bg-neutral-950 py-8 px-4 text-center text-xs text-neutral-500">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>© 2026 FastMusic. 高性能本地媒体流与无损音乐中心.</p>
-          <div className="flex items-center gap-4">
+      <footer className="mt-2 border-t border-neutral-900 bg-neutral-950 py-3 px-4 text-center text-xs text-neutral-500">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <p>© 2026 FastMusic · 本地媒体流与无损音乐中心</p>
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setIsHistoryModalOpen(true)}
               className="hover:text-rose-400 transition-colors"
@@ -770,12 +756,24 @@ export default function App() {
                 <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-white">M 键</kbd>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
+                <span className="text-neutral-400">上一首 / 下一首</span>
+                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-white">J / K</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
                 <span className="text-neutral-400">随心电台 (随机连播)</span>
                 <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-rose-300">R 键</kbd>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
                 <span className="text-neutral-400">收藏 / 取消收藏当前曲目</span>
+                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-rose-300">S 键</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-neutral-800/60">
+                <span className="text-neutral-400">歌词 开 / 关</span>
                 <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-rose-300">L 键</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-neutral-400">本面板 开 / 关</span>
+                <kbd className="px-2 py-0.5 rounded bg-neutral-800 font-mono text-[11px] text-white">?</kbd>
               </div>
             </div>
             <button

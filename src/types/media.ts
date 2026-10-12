@@ -11,6 +11,7 @@ export interface MediaItem {
   cover_url?: string;
   mtime?: number; // 源文件 mtimeMs，用于 stream URL 版本参数
   transcode?: TranscodeInfo; // .mkv 的转码状态（服务端在 /api/tracks 响应里附带）
+  lyric?: 'yes' | 'no' | null; // 歌词缓存状态：yes=有歌词, no=网易云没有, null/undefined=未查过
 }
 
 // .mkv 换容器(remux)状态：服务端 sidecar 引擎的只读快照。
@@ -47,6 +48,9 @@ export interface ArtistSummary {
 }
 
 export type PlayMode = 'sequence' | 'loop-all' | 'loop-one' | 'shuffle';
+
+// /api/tracks 排序键。default = 索引顺序（扫描顺序）
+export type TrackSort = 'default' | 'title' | 'artist' | 'album' | 'duration' | 'size' | 'mtime' | 'random';
 
 // MKV 转码状态（服务端 /api/transcode/:id 返回）。
 // .mkv 没有 Chrome demuxer，服务端用 sidecar 换容器：AV1/VP9 → .mkv.webm，

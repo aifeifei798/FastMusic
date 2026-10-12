@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { X, History, Trash2, Play, Film, Music, Search } from 'lucide-react';
 import { MediaItem, PlayHistoryItem } from '../types/media';
+import { SCROLLBAR_CLASSES } from '../utils/ui';
 
 interface PlayHistoryModalProps {
   isOpen: boolean;
@@ -103,7 +104,7 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
         )}
 
         {/* History List */}
-        <div className="flex-1 overflow-y-auto p-3 divide-y divide-neutral-800/50">
+        <div className={`flex-1 overflow-y-auto p-3 divide-y divide-neutral-800/50 ${SCROLLBAR_CLASSES}`}>
           {filteredHistory.length === 0 ? (
             <div className="py-16 text-center text-neutral-500 flex flex-col items-center">
               <History className="w-12 h-12 stroke-1 text-neutral-600 mb-3" />

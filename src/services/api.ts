@@ -1,4 +1,4 @@
-import { MediaItem, ArtistSummary, AlbumSummary, ScanResponse, PaginatedTracksResponse, RadioChannel, TranscodeStatus, TranscodeInfo, TranscodeSummary, LyricsResult } from '../types/media';
+import { MediaItem, ArtistSummary, AlbumSummary, ScanResponse, PaginatedTracksResponse, RadioChannel, TranscodeStatus, TranscodeInfo, TranscodeSummary, LyricsResult, TrackSort } from '../types/media';
 export class MediaApiService {
   private baseUrl: string;
 
@@ -124,6 +124,7 @@ export class MediaApiService {
     album?: string;
     media_type?: 'audio' | 'video';
     search?: string;
+    sort?: TrackSort;
     limit?: number;
     offset?: number;
     ready_only?: boolean;
@@ -139,6 +140,7 @@ export class MediaApiService {
       if (filters?.media_type) url.searchParams.append('media_type', filters.media_type);
       if (filters?.search) url.searchParams.append('search', filters.search);
       if (filters?.ready_only) url.searchParams.append('ready_only', '1');
+      if (filters?.sort && filters.sort !== 'default') url.searchParams.append('sort', filters.sort);
       url.searchParams.append('limit', String(limit));
       url.searchParams.append('offset', String(offset));
 

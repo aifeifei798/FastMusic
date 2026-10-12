@@ -15,10 +15,12 @@ import {
   Heart,
   Loader2,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Captions
 } from 'lucide-react';
-import { MediaItem, ArtistSummary, AlbumSummary, TranscodeInfo, TranscodeSummary } from '../types/media';
+import { MediaItem, ArtistSummary, AlbumSummary, TranscodeInfo, TranscodeSummary, TrackSort } from '../types/media';
 import { mediaApi } from '../services/api';
+import { SCROLLBAR_CLASSES, NO_SCROLLBAR_CLASSES } from '../utils/ui';
 
 interface LibraryViewProps {
   tracks: MediaItem[];
@@ -40,6 +42,10 @@ interface LibraryViewProps {
   onFilterMediaType: (type: 'all' | 'audio' | 'video') => void;
   readyOnly?: boolean;
   onToggleReadyOnly?: () => void;
+  sort?: TrackSort;
+  onSortChange?: (sort: TrackSort) => void;
+  rowDensity?: 'comfortable' | 'compact';
+  onToggleDensity?: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   favoriteIds?: Set<string>;
@@ -69,6 +75,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onFilterMediaType,
   readyOnly = false,
   onToggleReadyOnly,
+  sort = 'default',
+  onSortChange,
+  rowDensity = 'comfortable',
+  onToggleDensity,
   searchQuery,
   onSearchChange,
   favoriteIds = new Set(),
@@ -106,6 +116,25 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       return `${(mb / 1024).toFixed(2)} GB`;
     }
     return `${mb.toFixed(1)} MB`;
+  };
+
+  // 无封面时用标题 hash 生成确定性渐变占位，视觉比统一灰块更协调
+  const coverGradient = (text: string): string => {
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    const hue = (h >>> 0) % 360;
+    return `linear-gradient(135deg, hsl(${hue} 40% 24%), hsl(${(hue + 45) % 360} 50% 12%))`;
+  };
+
+  // 时长 mm:ss（duration 缺失时返回空串，避免显示 0:00 误导）
+  const formatDuration = (seconds?: number): string => {
+    if (!seconds || seconds <= 0) return '';
+    const m = Math.floor(seconds / 60);
+    const s = Math.round(seconds % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
   };
 
   // .mkv 换容器(remux)状态：/api/tracks 响应带初始值，之后每 10s 轮询刷新，
@@ -270,8 +299,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </button>
         </div>
 
-        {/* Search & Filter */}
-        <div className="flex items-center gap-2 flex-1 justify-end">
+        {/* Search & Filter — 允许换行, 窄屏不至于挤成一条溢出 */}
+        <div className="flex items-center gap-2 flex-1 justify-end flex-wrap">
           {/* Search box — 占据剩余宽度，搜索框更长更容易读长查询 */}
           <div className="relative flex-1 min-w-[220px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
@@ -291,6 +320,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </button>
             )}
           </div>
+
+          {/* 搜索命中数: 防抖后服务端返回的总数 */}
+          {searchQuery && (
+            <span className="text-[11px] font-mono text-neutral-500 shrink-0">命中 {totalTracks}</span>
+          )}
 
           {/* Media Type Toggle */}
           <div className="flex items-center gap-1 p-1 bg-neutral-900 rounded-xl border border-neutral-800 shrink-0">
@@ -344,6 +378,40 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             </button>
           )}
 
+          {/* 排序: 服务端 /api/tracks 的 sort 参数（默认 = 扫描索引顺序） */}
+          {onSortChange && (
+            <select
+              value={sort}
+              onChange={(e) => onSortChange(e.target.value as TrackSort)}
+              title="列表排序"
+              className="px-2.5 py-1.5 text-xs rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white cursor-pointer shrink-0"
+            >
+              <option value="default">默认顺序</option>
+              <option value="title">标题 A→Z</option>
+              <option value="artist">歌手 A→Z</option>
+              <option value="album">专辑 A→Z</option>
+              <option value="duration">时长</option>
+              <option value="size">文件大小</option>
+              <option value="mtime">文件日期</option>
+              <option value="random">随机</option>
+            </select>
+          )}
+
+          {/* 行密度: 标准 / 紧凑（紧凑隐藏专辑列, 每屏多几行） */}
+          {onToggleDensity && (
+            <button
+              onClick={onToggleDensity}
+              title={rowDensity === 'compact' ? '当前紧凑模式，点击恢复标准行高' : '当前标准模式，点击切换紧凑行高'}
+              className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors shrink-0 ${
+                rowDensity === 'compact'
+                  ? 'bg-neutral-800 text-white border-neutral-700'
+                  : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+              }`}
+            >
+              {rowDensity === 'compact' ? '紧凑' : '标准'}
+            </button>
+          )}
+
           {/* .mkv 换容器(remux)进度统计：已就绪 / 进行中 / 排队 */}
           {transcodeSummary && transcodeSummary.total_mkv > 0 && (
             <div
@@ -373,7 +441,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
       {/* A-Z Alphabet quick navigation for Artists / Albums */}
       {(activeTab === 'artists' || activeTab === 'albums') && (
-        <div className="flex items-center gap-1 overflow-x-auto py-1 px-2 bg-neutral-900/40 rounded-xl border border-neutral-800/80 scrollbar-none">
+        <div className={`flex items-center gap-1 overflow-x-auto py-1 px-2 bg-neutral-900/40 rounded-xl border border-neutral-800/80 ${NO_SCROLLBAR_CLASSES}`}>
           <span className="text-[11px] text-neutral-500 px-1 font-mono">字母索引:</span>
           {alphabet.map((char) => (
             <button
@@ -450,13 +518,18 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             </div>
           ) : (
             <>
-              {/* Scrollable list box: rows scroll internally (bounded height) so the page footer stays visible */}
-              <div ref={scrollBoxRef} onScroll={handleScrollBox} className="overflow-y-auto h-[390px]">
+              {/* Scrollable list box: 高度由 main 的剩余空间决定（有下限，避免行被压扁），
+                  这样小屏不会把列表裁掉, 页脚始终可见 */}
+              <div ref={scrollBoxRef} onScroll={handleScrollBox} className={`overflow-y-auto flex-1 min-h-[140px] ${SCROLLBAR_CLASSES}`}>
               {/* Header row with performance indicator — pinned while the rows scroll */}
-              <div className="sticky top-0 z-10 hidden sm:grid grid-cols-12 gap-4 px-5 py-3 text-[11px] font-semibold text-neutral-400 tracking-wider uppercase bg-neutral-900/70 border-b border-neutral-800/60">
+              <div className={`sticky top-0 z-10 hidden sm:grid grid-cols-12 gap-4 px-5 ${rowDensity === 'compact' ? 'py-2' : 'py-3'} text-[11px] font-semibold text-neutral-400 tracking-wider uppercase bg-neutral-900/70 border-b border-neutral-800/60`}>
                 <div className="col-span-1 text-center">#</div>
                 <div className="col-span-5">曲目标题 / 艺术家</div>
-                <div className="col-span-3">所属专辑</div>
+                {rowDensity === 'compact' ? (
+                  <div className="col-span-3 text-center">时长</div>
+                ) : (
+                  <div className="col-span-3">所属专辑</div>
+                )}
                 <div className="col-span-1 text-center">格式</div>
                 <div className="col-span-2 text-right">大小 / 操作</div>
               </div>
@@ -471,7 +544,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   return (
                     <div
                       key={`${track.id}-${idx}`}
-                      className={`grid grid-cols-12 gap-2 sm:gap-4 px-4 sm:px-5 py-3 items-center text-xs transition-colors group cursor-pointer relative ${
+                      className={`grid grid-cols-12 gap-2 sm:gap-4 px-4 sm:px-5 ${rowDensity === 'compact' ? 'py-1.5' : 'py-3'} items-center text-xs transition-colors group cursor-pointer relative ${
                         isCurrent
                           ? 'bg-rose-950/40 text-rose-300 font-medium border-l-2 border-l-rose-500'
                           : isFavorited
@@ -500,7 +573,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
                       {/* Title and Artist */}
                       <div className="col-span-8 sm:col-span-5 flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-lg bg-neutral-800 border border-neutral-700/80 flex items-center justify-center shrink-0 overflow-hidden relative">
+                        <div className={`${rowDensity === 'compact' ? 'w-7 h-7' : 'w-9 h-9'} rounded-lg bg-neutral-800 border border-neutral-700/80 flex items-center justify-center shrink-0 overflow-hidden relative`} style={track.cover_url ? undefined : { background: coverGradient(track.title) }}>
                           {track.cover_url ? (
                             <img
                               src={track.cover_url}
@@ -537,22 +610,39 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             >
                               {track.artist}
                             </span>
+                            {rowDensity === 'comfortable' && formatDuration(track.duration) && (
+                              <span aria-hidden="true" className="text-neutral-600">·</span>
+                            )}
+                            {rowDensity === 'comfortable' && formatDuration(track.duration) && (
+                              <span className="font-mono tabular-nums text-neutral-500">{formatDuration(track.duration)}</span>
+                            )}
+                            {track.lyric === 'yes' && (
+                              <span title="有歌词（网易云歌词缓存）" className="shrink-0">
+                                <Captions className="w-3 h-3 text-rose-400" />
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
 
-                      {/* Album */}
-                      <div className="hidden sm:block sm:col-span-3 text-neutral-400 truncate">
-                        <span
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onFilterAlbum(track.album);
-                          }}
-                          className="hover:text-neutral-200 hover:underline"
-                        >
-                          {track.album}
-                        </span>
-                      </div>
+                      {/* 专辑（标准模式） / 时长（紧凑模式） */}
+                      {rowDensity === 'compact' ? (
+                        <div className="hidden sm:flex sm:col-span-3 items-center justify-center font-mono text-[11px] text-neutral-500 tabular-nums">
+                          {formatDuration(track.duration) || '—'}
+                        </div>
+                      ) : (
+                        <div className="hidden sm:block sm:col-span-3 text-neutral-400 truncate">
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onFilterAlbum(track.album);
+                            }}
+                            className="hover:text-neutral-200 hover:underline"
+                          >
+                            {track.album}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Type badge */}
                       <div className="hidden sm:flex sm:col-span-1 items-center justify-center">
@@ -600,22 +690,35 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </div>
 
               {/* ================= FOOTER (stays visible below the scroll box) ================= */}
-              <div className="p-4 bg-neutral-900/80 border-t border-neutral-800/60 flex flex-col items-center justify-center gap-2 text-xs text-neutral-400">
-                {isLoadingMore ? (
-                  <div className="flex items-center gap-2 py-2 text-rose-400 font-medium">
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>正在流式拉取下一批曲目 (limit=30, offset={tracks.length})...</span>
-                  </div>
-                ) : hasMore ? (
-                  <span className="text-neutral-400">
-                    已加载 <strong className="text-white font-mono">{tracks.length}</strong> / <strong className="text-rose-400 font-mono">{totalTracks}</strong> 首曲目 · 向下滚动自动追加
-                  </span>
-                ) : (
-                  <div className="flex items-center gap-1.5 text-neutral-400 py-1">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <span>已加载完毕全部 <strong className="text-neutral-200 font-mono">{totalTracks}</strong> 首曲目，无更多数据</span>
-                  </div>
-                )}
+              <div className="px-4 py-2.5 bg-neutral-900/80 border-t border-neutral-800/60 flex items-center justify-between gap-3 text-xs text-neutral-400">
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                  {isLoadingMore ? (
+                    <div className="flex items-center gap-2 text-rose-400 font-medium">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>正在拉取下一批曲目 (offset={tracks.length})...</span>
+                    </div>
+                  ) : hasMore ? (
+                    <span className="text-neutral-400">
+                      已加载 <strong className="text-white font-mono">{tracks.length}</strong> / <strong className="text-rose-400 font-mono">{totalTracks}</strong> 首 · 向下滚动自动追加
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-neutral-400">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span>已加载全部 <strong className="text-neutral-200 font-mono">{totalTracks}</strong> 首</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    const el = scrollBoxRef.current;
+                    if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  title="回到列表顶部"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors shrink-0 cursor-pointer"
+                >
+                  <ArrowDownCircle className="w-3.5 h-3.5 rotate-180" />
+                  <span>回到顶部</span>
+                </button>
               </div>
             </>
           )}
@@ -736,7 +839,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </div>
 
               {/* Rows List — bounded height, scrolls internally so the footer stays visible */}
-              <div className="divide-y divide-neutral-800/60 overflow-y-auto h-[390px]">
+              <div className={`divide-y divide-neutral-800/60 overflow-y-auto h-[390px] ${SCROLLBAR_CLASSES}`}>
                 {favorites.map((track, idx) => {
                   const isCurrent = track.id === currentTrackId;
                   const isVideo = track.media_type === 'video';
@@ -771,7 +874,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
                       {/* Title and Artist */}
                       <div className="col-span-8 sm:col-span-5 flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-lg bg-neutral-800 border border-neutral-700/80 flex items-center justify-center shrink-0 overflow-hidden relative">
+                        <div className={`${rowDensity === 'compact' ? 'w-7 h-7' : 'w-9 h-9'} rounded-lg bg-neutral-800 border border-neutral-700/80 flex items-center justify-center shrink-0 overflow-hidden relative`} style={track.cover_url ? undefined : { background: coverGradient(track.title) }}>
                           {track.cover_url ? (
                             <img
                               src={track.cover_url}
