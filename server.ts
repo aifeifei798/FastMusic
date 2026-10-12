@@ -124,9 +124,11 @@ function isSidecarFile(name: string): boolean {
   return MKV_SIDECAR_SUFFIXES.some((s) => name.endsWith(s));
 }
 
-// /api/tracks 排序用的小工具：稳定字符串比较（中文用 localeCompare）与确定性 hash
+// /api/tracks 排序用的小工具：稳定字符串比较（中文用 Intl.Collator，实例只创建一次；
+// localeCompare 每次调用都要重新解析 locale，34k 条排序慢约 8 倍）与确定性 hash
+const COLLATOR = new Intl.Collator('zh-Hans-CN', { sensitivity: 'base' });
 function compareString(a: string, b: string): number {
-  return String(a || '').localeCompare(String(b || ''), 'zh-Hans-CN');
+  return COLLATOR.compare(String(a || ''), String(b || ''));
 }
 
 function hashString(s: string): number {
@@ -137,6 +139,60 @@ function hashString(s: string): number {
   }
   return h >>> 0;
 }
+
+// ================= 查询缓存 =================
+// 排序结果缓存（key = sort + seed）：34k 条排序 ~11ms，缓存后同一排序的后续请求
+// 只需按筛选条件遍历，不再重复排序。库增删/扫描后失效。
+const sortCache = new Map<string, ServerMediaItem[]>();
+// 搜索用的小写字段缓存（惰性填充，不写进 db 文件，避免体积膨胀）
+const lowerCache = new Map<string, { t: string; a: string }>();
+
+function invalidateQueryCaches(): void {
+  sortCache.clear();
+  lowerCache.clear();
+}
+
+// 返回按 sort 排好的全库数组（引用共享，调用方只读 + filter，不要原地修改）
+function getSortedItems(sort: string, seed: number): ServerMediaItem[] {
+  const key = `${sort}:${seed || 0}`;
+  const hit = sortCache.get(key);
+  if (hit) return hit;
+
+  const arr = Array.from(MEDIA_DB.values());
+  if (sort === 'random') {
+    arr.sort((a, b) => hashString(`${a.id}:${seed}`) - hashString(`${b.id}:${seed}`));
+  } else if (sort !== 'default') {
+    arr.sort((a, b) => {
+      switch (sort) {
+        case 'title': return compareString(a.title, b.title);
+        case 'artist': return compareString(a.artist, b.artist);
+        case 'album': return compareString(a.album, b.album);
+        case 'duration': return (a.duration || 0) - (b.duration || 0);
+        case 'size': return (a.file_size || 0) - (b.file_size || 0);
+        case 'mtime': return (a.mtime || 0) - (b.mtime || 0);
+        default: return 0;
+      }
+    });
+  }
+
+  if (sortCache.size >= 12) sortCache.clear(); // 防止 seed 变化导致缓存无限增长
+  sortCache.set(key, arr);
+  return arr;
+}
+
+function lowerFields(item: ServerMediaItem): { t: string; a: string } {
+  let v = lowerCache.get(item.id);
+  if (!v) {
+    v = { t: String(item.title || '').toLowerCase(), a: String(item.artist || '').toLowerCase() };
+    lowerCache.set(item.id, v);
+  }
+  return v;
+}
+
+// sidecar 存在性/大小缓存（按源路径）。statSync 在 4T 挂载上约 40µs/次，
+// 1233 个 .mkv 就是 ~50ms，列表每次刷新/轮询都付这个代价；缓存后只 stat 一次。
+// key = 源 abs_path，srcMtime 变化（源文件被改）时自动失效。
+const sidecarStatCache = new Map<string, { outPath: string; size: number; container: string; srcMtime: number }>();
 
 // 已存在且不比源文件旧的 sidecar → 直接复用
 function findFreshSidecar(srcPath: string, srcMtime: number): string | undefined {
@@ -165,11 +221,21 @@ function transcodeInfo(item: ServerMediaItem): TranscodeInfo | undefined {
   if (job && job.status !== 'done') {
     return { status: job.status, progress: job.progress };
   }
-  // done（或队列里没有 job）→ 看 sidecar 是否已存在且不比源文件旧
-  const outPath = (job && job.outPath) || findFreshSidecar(item.abs_path, item.mtime ?? 0);
+  const srcMtime = item.mtime ?? 0;
+  const cached = sidecarStatCache.get(item.abs_path);
+  if (cached && cached.srcMtime === srcMtime) {
+    return { status: 'ready', progress: 100, container: cached.container, out_size: cached.size };
+  }
+  const outPath = (job && job.outPath) || findFreshSidecar(item.abs_path, srcMtime);
   if (outPath) {
     let outSize = 0;
     try { outSize = fs.statSync(outPath).size; } catch {}
+    sidecarStatCache.set(item.abs_path, {
+      outPath,
+      size: outSize,
+      container: path.extname(outPath).slice(1),
+      srcMtime,
+    });
     return { status: 'ready', progress: 100, container: path.extname(outPath).slice(1), out_size: outSize };
   }
   return { status: 'pending', progress: 0 };
@@ -343,6 +409,16 @@ function startTranscode(job: TranscodeJob): void {
           job.status = 'done';
           job.progress = 100;
           job.finishedAt = Date.now();
+          // 产出即缓存状态，列表/轮询不再 statSync
+          try {
+            const st = fs.statSync(job.outPath!);
+            sidecarStatCache.set(job.srcPath, {
+              outPath: job.outPath!,
+              size: st.size,
+              container: path.extname(job.outPath!).slice(1),
+              srcMtime: job.srcMtime,
+            });
+          } catch {}
           console.log(`[Transcode] done ${path.basename(job.srcPath)} (${job.finishedAt - (job.startedAt || 0)}ms)`);
         } catch (e: any) {
           try { fs.unlinkSync(job.tmpPath!); } catch {}
@@ -748,7 +824,10 @@ async function scanMultipleLibraries(rootDirs: string[], force: boolean = false)
         if (!parsed.decodable) {
           console.warn(`[Skip] 文件无法解码（可能下载不完整），不入库: ${filePath}`);
           invalidCount++;
-          if (existing) MEDIA_DB.delete(id);
+          if (existing) {
+            MEDIA_DB.delete(id);
+            invalidateQueryCaches();
+          }
           return;
         }
         if (parsed.hasTag) taggedCount++;
@@ -767,6 +846,7 @@ async function scanMultipleLibraries(rootDirs: string[], force: boolean = false)
           abs_path: filePath,
           mtime: stats.mtimeMs
         });
+        invalidateQueryCaches();
         totalAdded++;
       } catch (err) {
         console.warn(`[Warn] 解析文件失败 ${filePath}:`, err);
@@ -838,6 +918,7 @@ function scanLibrary(rootDir: string) {
           stream_url: `/api/stream/${id}`,
           abs_path: filePath
         });
+        invalidateQueryCaches();
       }
     }
   }
@@ -910,7 +991,10 @@ app.post('/api/scan', async (req: Request, res: Response) => {
     const validPaths = pathsToScan.filter(p => fs.existsSync(p));
 
     if (validPaths.length > 0) {
-      if (force) MEDIA_DB.clear();
+      if (force) {
+        MEDIA_DB.clear();
+        invalidateQueryCaches();
+      }
       const summary = await scanMultipleLibraries(validPaths, force);
       saveDbToDisk();
       // 扫描后新入库的 .mkv 也加入后台预转码队列
@@ -925,6 +1009,7 @@ app.post('/api/scan', async (req: Request, res: Response) => {
     } else if (force) {
       // 强制且目录不存在：清空库
       MEDIA_DB.clear();
+      invalidateQueryCaches();
       saveDbToDisk();
       res.json({
         message: '强制扫描：指定目录不存在或为空，库已清空。请配置有效的本地媒体目录。',
@@ -1006,6 +1091,7 @@ app.get('/api/tracks', (req: Request, res: Response) => {
   const readyOnly = req.query.ready_only === '1' || req.query.ready_only === 'true';
   // sort: title | artist | album | duration | size | mtime | random（默认 = 索引顺序）
   const sort = (req.query.sort as string | undefined) || 'default';
+  const seed = parseInt(req.query.seed as string, 10) || 0;
 
   // limit / offset 分页参数
   const limitQuery = req.query.limit !== undefined ? parseInt(req.query.limit as string, 10) : undefined;
@@ -1013,14 +1099,17 @@ app.get('/api/tracks', (req: Request, res: Response) => {
   const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
   const page_size = req.query.page_size ? parseInt(req.query.page_size as string, 10) : 50;
 
+  // 排序结果缓存（按 sort+seed），筛选只是遍历已排好的数组，顺序保持不变
+  const base = getSortedItems(sort, seed);
   const results: ServerMediaItem[] = [];
 
-  for (const item of MEDIA_DB.values()) {
+  for (const item of base) {
     if (artist && item.artist !== artist) continue;
     if (album && item.album !== album) continue;
     if (media_type && item.media_type !== media_type) continue;
-    if (search && !item.title.toLowerCase().includes(search) && !item.artist.toLowerCase().includes(search)) {
-      continue;
+    if (search) {
+      const lc = lowerFields(item);
+      if (!lc.t.includes(search) && !lc.a.includes(search)) continue;
     }
     if (readyOnly) {
       const info = transcodeInfo(item);
@@ -1030,30 +1119,6 @@ app.get('/api/tracks', (req: Request, res: Response) => {
   }
 
   const total = results.length;
-
-  // 排序（默认保持索引顺序）。random 用稳定伪随机（seed 由请求参数决定，分页时一致）
-  if (sort !== 'default') {
-    if (sort === 'random') {
-      const seed = parseInt(req.query.seed as string, 10) || 0;
-      results.sort((a, b) => {
-        const ha = hashString(`${a.id}:${seed}`);
-        const hb = hashString(`${b.id}:${seed}`);
-        return ha - hb;
-      });
-    } else {
-      results.sort((a, b) => {
-        switch (sort) {
-          case 'title': return compareString(a.title, b.title);
-          case 'artist': return compareString(a.artist, b.artist);
-          case 'album': return compareString(a.album, b.album);
-          case 'duration': return (a.duration || 0) - (b.duration || 0);
-          case 'size': return (a.file_size || 0) - (b.file_size || 0);
-          case 'mtime': return (a.mtime || 0) - (b.mtime || 0);
-          default: return 0;
-        }
-      });
-    }
-  }
 
   // 1. 如果使用了 limit / offset
   if (limitQuery !== undefined || offsetQuery !== undefined) {

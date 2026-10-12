@@ -60,6 +60,7 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   semicolon separated) and then from `fastmusic_db.json`'s `dirs` array. Add real dirs via
   `POST /api/directories` or the ServerConfigModal UI. (`bun.lock` was also dropped — npm is the
   only toolchain; `server.sh` uses `npm install`.)
+- **查询缓存（server.ts）**：`/api/tracks` 的排序结果按 `sort:seed` 缓存（`sortCache`，最多 12 条，库增删时清空），搜索用的小写字段惰性缓存（`lowerCache`，不写进 db 文件），`.mkv` sidecar 的 stat 结果按源路径缓存（`sidecarStatCache`，`srcMtime` 变化即失效，转码完成时写入）。**任何 `MEDIA_DB` 增删必须调用 `invalidateQueryCaches()`**，否则排序/搜索会返回旧数据。实测：`sort=title` 110ms→~5ms，`ready_only=1` 90ms→~3ms。
 - **Scan is persistent + incremental** (rewritten): the library is persisted to
   `fastmusic_db.json` next to `server.ts` (`{dirs, items[]}`, atomic tmp+rename). Startup
   calls `loadDbFromDisk()` (no more `MEDIA_DB.clear()`), so a restart keeps the index.

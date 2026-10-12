@@ -103,6 +103,7 @@ src/
 - 首次全量扫描较慢(music-metadata 逐文件解析);后续增量扫描很快。
 - 歌词来自网易云明文接口(`music.163.com/api/song/lyric`),服务端代理 + 缓存(`fastmusic_lyrics.json`,已 gitignore);本地曲库标题/歌手若与网易云不一致,可能匹配到翻唱版本或无歌词。
 - 无测试套件;`npm run lint` 即 `tsc --noEmit`。
+- 服务端缓存 `/api/tracks` 的排序结果与 `.mkv` sidecar 状态,扫描/增删条目后自动失效;曲库索引仍是单个 JSON 文件(34k 条目约 13 MB,加载 ~100 ms),无需外部数据库。
 
 ## 📄 许可
 
