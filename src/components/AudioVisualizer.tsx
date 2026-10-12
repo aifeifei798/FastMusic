@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Activity, BarChart2, Waves, Disc } from 'lucide-react';
 
-export type VisualizerMode = 'bars' | 'wave' | 'circle' | 'mirrored';
+export type VisualizerMode = 'bars' | 'wave' | 'circle' | 'mirrored' | 'none';
 
 interface AudioVisualizerProps {
   isPlaying: boolean;

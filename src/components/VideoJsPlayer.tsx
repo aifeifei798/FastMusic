@@ -25,7 +25,8 @@ import {
   Loader2,
   AlertTriangle,
   CheckCircle2,
-  Captions
+  Captions,
+  EyeOff
 } from 'lucide-react';
 import { MediaItem, PlayMode, TranscodeStatus } from '../types/media';
 import { AudioVisualizer, VisualizerMode } from './AudioVisualizer';
@@ -264,7 +265,28 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   const [eqEnabled, setEqEnabled] = useState<boolean>(true);
   const [eqPreset, setEqPreset] = useState<string>('flat');
   const [showEqPanel, setShowEqPanel] = useState<boolean>(false);
-  const [visualizerMode, setVisualizerMode] = useState<VisualizerMode>('bars');
+  // 频谱模式持久在 localStorage('fastmusic_visualizer')，'none' = 无频谱(纯黑舞台)
+  const [visualizerMode, setVisualizerMode] = useState<VisualizerMode>(() => {
+    try {
+      const saved = localStorage.getItem('fastmusic_visualizer');
+      if (saved && ['bars', 'wave', 'circle', 'mirrored', 'none'].includes(saved)) {
+        return saved as VisualizerMode;
+      }
+    } catch {
+      // 忽略解析失败，使用默认
+    }
+    return 'bars';
+  });
+
+  // 切换频谱模式并持久化（'none' 表示不显示频谱）
+  const changeVisualizerMode = useCallback((mode: VisualizerMode) => {
+    setVisualizerMode(mode);
+    try {
+      localStorage.setItem('fastmusic_visualizer', mode);
+    } catch {
+      // localStorage 不可用时忽略
+    }
+  }, []);
 
   // --- 歌词 (网易云) ---
   // 开关持久在 localStorage('fastmusic_lyrics')；默认开启。
@@ -997,7 +1019,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setVisualizerMode('bars');
+                  changeVisualizerMode('bars');
                 }}
                 title="经典柱状频谱 (Bars EQ)"
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
@@ -1013,7 +1035,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setVisualizerMode('wave');
+                  changeVisualizerMode('wave');
                 }}
                 title="示波器波形 (Waveform)"
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
@@ -1029,7 +1051,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setVisualizerMode('circle');
+                  changeVisualizerMode('circle');
                 }}
                 title="光晕环状频谱 (Circular Halo)"
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
@@ -1045,7 +1067,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setVisualizerMode('mirrored');
+                  changeVisualizerMode('mirrored');
                 }}
                 title="对称双向频谱 (Mirrored EQ)"
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
@@ -1056,6 +1078,22 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               >
                 <Activity className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">对称频谱</span>
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  changeVisualizerMode('none');
+                }}
+                title="无频谱（纯黑舞台，只保留歌词与信息）"
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+                  visualizerMode === 'none'
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60'
+                }`}
+              >
+                <EyeOff className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">无</span>
               </button>
             </div>
           )}
@@ -1101,8 +1139,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           </div>
         )}
 
-        {/* Audio Visualizer (rendered when media is audio) */}
-        {!isVideo && currentTrack && (
+        {/* Audio Visualizer (rendered when media is audio; '无' 模式不渲染, 舞台保持纯黑) */}
+        {!isVideo && currentTrack && visualizerMode !== 'none' && (
           <div className="absolute inset-0 z-10 w-full h-full">
             <AudioVisualizer
               isPlaying={isPlaying}

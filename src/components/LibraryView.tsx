@@ -12,7 +12,6 @@ import {
   ArrowDownCircle,
   RefreshCw,
   CheckCircle2,
-  Radio,
   Heart,
   Loader2,
   Clock,
@@ -43,7 +42,6 @@ interface LibraryViewProps {
   onToggleReadyOnly?: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  onStartRadio?: () => void;
   favoriteIds?: Set<string>;
   favorites?: MediaItem[];
   onToggleFavorite?: (track: MediaItem) => void;
@@ -73,7 +71,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onToggleReadyOnly,
   searchQuery,
   onSearchChange,
-  onStartRadio,
   favoriteIds = new Set(),
   favorites = [],
   onToggleFavorite,
@@ -228,41 +225,41 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     <div className="w-full flex-1 min-h-0 flex flex-col gap-4">
       {/* Search & Top Action Bar */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        {/* Navigation Tabs */}
-        <div className="flex items-center gap-1 p-1 bg-neutral-900 rounded-xl border border-neutral-800">
+        {/* Navigation Tabs — 标签精简, 把宽度让给搜索框 */}
+        <div className="flex items-center gap-1 p-1 bg-neutral-900 rounded-xl border border-neutral-800 shrink-0">
           <button
             onClick={() => setActiveTab('tracks')}
-            className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
               activeTab === 'tracks'
                 ? 'bg-neutral-800 text-white shadow-sm'
                 : 'text-neutral-400 hover:text-neutral-200'
             }`}
           >
-            曲目 ({tracks.length} / {totalTracks})
+            曲目 {tracks.length}/{totalTracks}
           </button>
           <button
             onClick={() => setActiveTab('artists')}
-            className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
               activeTab === 'artists'
                 ? 'bg-neutral-800 text-white shadow-sm'
                 : 'text-neutral-400 hover:text-neutral-200'
             }`}
           >
-            歌手 / UP主 ({artists.length})
+            歌手/UP主 {artists.length}
           </button>
           <button
             onClick={() => setActiveTab('albums')}
-            className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
               activeTab === 'albums'
                 ? 'bg-neutral-800 text-white shadow-sm'
                 : 'text-neutral-400 hover:text-neutral-200'
             }`}
           >
-            专辑库 ({albums.length})
+            专辑 {albums.length}
           </button>
           <button
             onClick={() => setActiveTab('favorites')}
-            className={`px-3.5 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
               activeTab === 'favorites'
                 ? 'bg-neutral-800 text-rose-300 shadow-sm border border-rose-500/30'
                 : 'text-neutral-400 hover:text-rose-300'
@@ -271,29 +268,19 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <Heart className={`w-3.5 h-3.5 ${favorites.length > 0 ? 'fill-rose-500 text-rose-500' : 'text-neutral-400'}`} />
             <span>我的收藏 ({favorites.length})</span>
           </button>
-          {onStartRadio && (
-            <button
-              onClick={onStartRadio}
-              title="进入随心电台，立即随机播放全库"
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white transition-all shadow-sm flex items-center gap-1.5 active:scale-95 cursor-pointer ml-1"
-            >
-              <Radio className="w-3.5 h-3.5 animate-pulse" />
-              <span>随心电台</span>
-            </button>
-          )}
         </div>
 
         {/* Search & Filter */}
-        <div className="flex items-center gap-2 flex-1 max-w-xl justify-end">
-          {/* Search box */}
-          <div className="relative flex-1">
+        <div className="flex items-center gap-2 flex-1 justify-end">
+          {/* Search box — 占据剩余宽度，搜索框更长更容易读长查询 */}
+          <div className="relative flex-1 min-w-[220px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
             <input
               type="text"
               placeholder="搜索曲目、歌手或专辑..."
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-rose-500/80 transition-colors"
+              className="w-full pl-9 pr-8 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-rose-500/80 transition-colors"
             />
             {searchQuery && (
               <button

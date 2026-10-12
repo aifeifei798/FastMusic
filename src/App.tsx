@@ -674,7 +674,6 @@ export default function App() {
             onToggleReadyOnly={handleToggleReadyOnly}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
-            onStartRadio={() => startRadioMode('all')}
             favoriteIds={favoriteIds}
             favorites={favorites}
             onToggleFavorite={handleToggleFavorite}

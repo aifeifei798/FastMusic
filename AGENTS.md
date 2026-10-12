@@ -173,6 +173,12 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   `PlayQueueModal.tsx` 已删除，列表行的 "+" 按钮和头部的"播放队列"按钮都没有了。
   `loop-one`（单曲循环）由 `VideoJsPlayer` 的 `ended` 处理器（读 `playModeRef`）`currentTime(0)+play()` 重播，
   App 的 `handleNextTrack` 在 `loop-one` 时直接 return。
+- **频谱模式有"无"**: `VideoJsPlayer.tsx` 的视觉模式切换（柱状频谱 / 波形图 / 光晕环 / 对称频谱 / **无**）
+  持久在 `localStorage('fastmusic_visualizer')`。选 `none` 时 `AudioVisualizer` 完全不挂载（舞台纯黑，
+  只剩左侧信息列与右侧歌词列），所以 `AudioVisualizer` 的 canvas 不存在 — 不要假设音频曲目一定有 canvas。
+  列表工具栏里的"随心电台"按钮已删除（`LibraryView.tsx` 不再接收 `onStartRadio`），电台入口只剩页头
+  的 nav 链接与"随心电台/电台广播中"按钮，以及 `R` 键。搜索框不再被 `max-w-xl` 限制，而是 `flex-1`
+  填满 tabs 与筛选控件之间的剩余宽度（tabs 组 `shrink-0`）。
 - **Progress-bar scrub** (`VideoJsPlayer.tsx`): the scrub bar div wires `onMouseDown`/`onMove`/`onUp`/`onLeave`.
   `isDraggingProgress` MUST be reset on `onMouseUp` (`handleProgressScrubEnd`) AND `onMouseLeave` — if it's only
   set true on mousedown and never cleared, the `if (!isDraggingProgress)` guards in `handleProgressScrub` and the
