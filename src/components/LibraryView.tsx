@@ -42,6 +42,9 @@ interface LibraryViewProps {
   onFilterMediaType: (type: 'all' | 'audio' | 'video') => void;
   readyOnly?: boolean;
   onToggleReadyOnly?: () => void;
+  hasLyricsOnly?: boolean;
+  onToggleHasLyrics?: () => void;
+  onLyricStatus?: (lyrics: Record<string, boolean>) => void;
   sort?: TrackSort;
   onSortChange?: (sort: TrackSort) => void;
   rowDensity?: 'comfortable' | 'compact';
@@ -75,6 +78,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onFilterMediaType,
   readyOnly = false,
   onToggleReadyOnly,
+  hasLyricsOnly = false,
+  onToggleHasLyrics,
+  onLyricStatus,
   sort = 'default',
   onSortChange,
   rowDensity = 'comfortable',
@@ -158,6 +164,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   const coverOf = (track: MediaItem): string | undefined => track.cover_url || coverById[track.id] || undefined;
 
+  // 歌手 / 专辑卡片：服务端已缓存的 avatar_url/cover_url，或预取回来的 cover_track_id 封面
+  const entityCover = (e: ArtistSummary | AlbumSummary): string | undefined =>
+    (e as ArtistSummary).avatar_url ||
+    (e as AlbumSummary).cover_url ||
+    (e.cover_track_id ? coverById[e.cover_track_id] || undefined : undefined);
+
   const handlePrefetchCovers = async () => {
     if (coverPrefetching) return;
     const ids = tracksRef.current.map((t) => t.id);
@@ -168,6 +180,23 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     const resolved = Object.values(covers).filter(Boolean).length;
     setCoverPrefetchInfo(`封面预取完成：命中 ${resolved} / ${ids.length}`);
     setCoverPrefetching(false);
+  };
+
+  // 歌词预取：服务端并发解析当前列表的网易云歌词并缓存，之后播放秒出歌词，
+  // 「只看有歌词」筛选也依赖同一缓存（没预取过的曲目 lyric 为 null，会被过滤）。
+  const [lyricPrefetching, setLyricPrefetching] = useState<boolean>(false);
+  const [lyricPrefetchInfo, setLyricPrefetchInfo] = useState<string>('');
+
+  const handlePrefetchLyrics = async () => {
+    if (lyricPrefetching) return;
+    const ids = tracksRef.current.map((t) => t.id);
+    if (ids.length === 0) return;
+    setLyricPrefetching(true);
+    const res = await mediaApi.prefetchLyrics(ids);
+    // 服务端缓存已写入，同步列表行的歌词 badge（否则要下次加载才更新）
+    if (onLyricStatus) onLyricStatus(res.lyrics);
+    setLyricPrefetchInfo(`歌词预取完成：命中 ${res.resolved} / ${res.requested}`);
+    setLyricPrefetching(false);
   };
 
   useEffect(() => {
@@ -286,6 +315,30 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     }
     return list;
   }, [albums, letterFilter, q, entitySort]);
+
+  // 歌手 / 专辑卡片封面补全：服务端只在封面已缓存时给出 avatar_url / cover_url，
+  // 这里用每条实体的 cover_track_id 后台批量解析（已请求过的 id 不再重复），
+  // 结果写进 coverById，卡片下次渲染就有图。
+  const entityCoverRequestedRef = useRef<Set<string>>(new Set());
+  const [entityCoverInfo, setEntityCoverInfo] = useState<string>('');
+
+  useEffect(() => {
+    if (activeTab !== 'artists' && activeTab !== 'albums') return;
+    const list = activeTab === 'artists'
+      ? filteredArtists.slice(0, artistLimit)
+      : filteredAlbums.slice(0, albumLimit);
+    const ids = list
+      .map((e) => e.cover_track_id)
+      .filter((id): id is string => !!id && !entityCoverRequestedRef.current.has(id) && !(id in coverById));
+    if (ids.length === 0) return;
+    ids.forEach((id) => entityCoverRequestedRef.current.add(id));
+    setEntityCoverInfo(`补全封面 ${ids.length} 张…`);
+    mediaApi.prefetchCovers(ids).then((covers) => {
+      setCoverById((prev) => ({ ...prev, ...covers }));
+      const resolved = Object.values(covers).filter(Boolean).length;
+      setEntityCoverInfo(`封面补全：命中 ${resolved} / ${ids.length}`);
+    });
+  }, [activeTab, artistLimit, albumLimit, filteredArtists, filteredAlbums, coverById]);
 
   // 网格标签的滚动容器：触底时追加下一批卡片（与曲目列表的无限滚动同一思路）
   const gridBoxRef = useRef<HTMLDivElement | null>(null);
@@ -429,7 +482,24 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             </button>
           )}
 
-          {/* 排序: 服务端 /api/tracks 的 sort 参数（默认 = 扫描索引顺序） */}
+          {/* 只看有歌词：只留下歌词缓存里已命中（网易云有歌词）的曲目。
+              筛选只读服务端缓存，所以先点「预取歌词」覆盖率更高 */}
+          {onToggleHasLyrics && (
+            <button
+              onClick={onToggleHasLyrics}
+              title="只显示网易云有歌词的曲目（需要先预取或播放过）"
+              className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 shrink-0 ${
+                hasLyricsOnly
+                  ? 'bg-sky-950/70 text-sky-300 border-sky-700/60'
+                  : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+                }`}
+              >
+                <Captions className="w-3.5 h-3.5" />
+                <span>只看有歌词</span>
+              </button>
+            )}
+
+            {/* 排序: 服务端 /api/tracks 的 sort 参数（默认 = 扫描索引顺序） */}
           {onSortChange && (
             <select
               value={sort}
@@ -479,6 +549,24 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </button>
           {coverPrefetchInfo && !coverPrefetching && (
             <span className="text-[11px] text-neutral-500 shrink-0">{coverPrefetchInfo}</span>
+          )}
+
+          {/* 歌词预取：批量解析当前列表的网易云歌词并缓存，之后播放秒出歌词，
+              「只看有歌词」筛选也依赖同一缓存 */}
+          <button
+            onClick={handlePrefetchLyrics}
+            title="为当前列表条目获取歌词（网易云），缓存到 fastmusic_lyrics.json"
+            className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors shrink-0 flex items-center gap-1.5 ${
+              lyricPrefetching
+                ? 'bg-sky-950/70 text-sky-300 border-sky-800/60'
+                : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+            }`}
+          >
+            {lyricPrefetching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Captions className="w-3.5 h-3.5" />}
+            <span>{lyricPrefetching ? '获取歌词…' : '预取歌词'}</span>
+          </button>
+          {lyricPrefetchInfo && !lyricPrefetching && (
+            <span className="text-[11px] text-neutral-500 shrink-0">{lyricPrefetchInfo}</span>
           )}
 
           {/* .mkv 换容器(remux)进度统计：已就绪 / 进行中 / 排队 */}
@@ -802,6 +890,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <span>
               共收录 <strong className="text-white">{filteredArtists.length}</strong> 位艺术家 / UP主
               <span className="ml-2 font-mono text-neutral-500">· 已渲染 {Math.min(artistLimit, filteredArtists.length)}</span>
+              {entityCoverInfo && <span className="ml-2 text-neutral-500">{entityCoverInfo}</span>}
             </span>
             <select
               value={entitySort}
@@ -828,9 +917,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800/80 hover:border-rose-500/50 hover:bg-neutral-800/40 transition-all cursor-pointer group flex flex-col items-center text-center"
                 >
                   <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-neutral-800 border-2 border-neutral-700 group-hover:border-rose-500/80 transition-colors shadow-lg mb-3 flex items-center justify-center">
-                    {artist.avatar_url ? (
+                    {entityCover(artist) ? (
                       <img
-                        src={artist.avatar_url}
+                        src={entityCover(artist)}
                         alt={artist.artist_name}
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
@@ -869,6 +958,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <span>
               共收录 <strong className="text-white">{filteredAlbums.length}</strong> 张专辑
               <span className="ml-2 font-mono text-neutral-500">· 已渲染 {Math.min(albumLimit, filteredAlbums.length)}</span>
+              {entityCoverInfo && <span className="ml-2 text-neutral-500">{entityCoverInfo}</span>}
             </span>
             <select
               value={entitySort}
@@ -895,9 +985,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   className="p-3 rounded-2xl bg-neutral-900/60 border border-neutral-800/80 hover:border-rose-500/50 hover:bg-neutral-800/40 transition-all cursor-pointer group flex flex-col"
                 >
                   <div className="aspect-square w-full rounded-xl overflow-hidden bg-neutral-800 border border-neutral-700/80 group-hover:border-rose-500/80 transition-colors shadow-lg mb-3 flex items-center justify-center">
-                    {album.cover_url ? (
+                    {entityCover(album) ? (
                       <img
-                        src={album.cover_url}
+                        src={entityCover(album)}
                         alt={album.album_name}
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"

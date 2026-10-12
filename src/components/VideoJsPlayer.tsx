@@ -331,6 +331,13 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       return 340;
     }
   });
+  // 剧场模式（非全屏）舞台比屏幕窄，固定 340/420px 的歌词列会挤掉画面；
+  // 按舞台实际可用宽度封顶（最多占 26%），窄屏自动收窄，全屏时保持用户选择。
+  const effectiveLyricWidth = (() => {
+    const c = containerRef.current;
+    const stage = c ? c.getBoundingClientRect().width - lyricRightInset : lyricWidth;
+    return Math.max(200, Math.min(lyricWidth, Math.round(stage * 0.26)));
+  })();
   const [showLyricSettings, setShowLyricSettings] = useState<boolean>(false);
 
   useEffect(() => {
@@ -1200,12 +1207,19 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       {currentTrack && (
         <div
           className={`absolute inset-0 z-[15] pointer-events-none grid gap-4 px-5 sm:px-7 ${
-            isVideo ? `grid-cols-[1fr_${lyricWidth}px]` : 'grid-cols-[1fr_240px_1fr]'
+            isVideo ? '' : 'grid-cols-[1fr_240px_1fr]'
           }`}
           style={{
             gridTemplateRows: '1fr',
-            // 视频时右列贴紧画面右边缘: 覆盖 px-5 sm:px-7 的右内边距
-            ...(isVideo ? { paddingRight: `${lyricRightInset}px` } : {}),
+            // 视频时右列贴紧画面右边缘: 覆盖 px-5 sm:px-7 的右内边距。
+            // 列宽必须用 inline style —— Tailwind 的 arbitrary class 是静态扫描生成的,
+            // 带运行时插值的 `grid-cols-[1fr_${n}px]` 不会生成任何 CSS 规则。
+            ...(isVideo
+              ? {
+                gridTemplateColumns: `1fr ${effectiveLyricWidth}px`,
+                paddingRight: `${lyricRightInset}px`,
+              }
+              : {}),
           }}
           title={
             lyricMatch
@@ -1375,6 +1389,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 </button>
               ))}
             </div>
+          )}
+          {isVideo && effectiveLyricWidth < lyricWidth && (
+            <p className="text-[10px] text-neutral-500">舞台宽度有限，歌词列自动收窄到 {effectiveLyricWidth}px</p>
           )}
           {!showLyrics && (
             <p className="text-[10px] text-neutral-500">歌词当前关闭 — 打开后设置生效</p>

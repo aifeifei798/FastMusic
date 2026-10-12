@@ -38,6 +38,8 @@ export interface AlbumSummary {
   artist_name: string;
   track_count: number;
   cover_url?: string;
+  // 代表曲目 id（封面已缓存时就是它，否则是该专辑任意一条曲目），用于"补全封面"批量解析
+  cover_track_id?: string;
 }
 
 export interface ArtistSummary {
@@ -45,6 +47,7 @@ export interface ArtistSummary {
   album_count: number;
   track_count: number;
   avatar_url?: string;
+  cover_track_id?: string;
 }
 
 export type PlayMode = 'sequence' | 'loop-all' | 'loop-one' | 'shuffle';

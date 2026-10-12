@@ -131,18 +131,28 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   still has a vestigial `res.redirect()` branch for `http(s)://` abs_path (`server.ts:522-523`)
   that is never hit in practice; the real path is local `fs.createReadStream` + HTTP `206`
   Range streaming.
-- **封面引擎（server.ts）**：三级兜底 `本地内嵌 → iTunes → 网易云`。磁盘缓存 `covers/<id>.<ext>` + 索引 `fastmusic_covers.json`（`{covers:{id:{source,ext,url,matched,fetched_at}}, misses:[id…]}`，原子 tmp+rename，写盘防抖 5s）。`resolveCover()` 顺序：内存索引 → 已查过但无封面（`coverMisses`）直接返回 null → `extractEmbeddedCover()`（第二次 `parseFile`，`skipCovers:false`；music-metadata 不解析 Matroska，所以 `.mkv/.webm` 只能靠远端）→ `itunesCandidates()` + `neteaseCandidates()` 并发，按 `scoreCoverMatch()` 打分（标题精确 100 / 包含 60，歌手一致 +40 / 部分 +25 / 不符 −40，翻唱·歌みた −30，专辑一致 +15，网易云时长 ±3s +20），阈值 65，取最高分候选下载。`GET /api/cover/:id`（`?local=1` 跳过联网，`Cache-Control: public, max-age=31536000`，`X-Cover-Source` 头）；`POST /api/cover/prefetch`（≤200 ids，并发 8）。**列表行只有 `cover_url` 已缓存时才渲染 `<img>`**（`decorateItem()` 只读索引，不联网），所以列表不会触发网络；播放器中间列的唱片始终请求 `/api/cover/:id`（请求本身触发解析）。网易云搜索结果里的 album 只有 `picId`，需要 `neteaseAlbumPic(albumId)` 再查 `/api/v1/album/{id}`（按 album id 缓存，每曲目最多 3 次）。唱片在 `VideoJsPlayer.tsx` 的中间列（不在 `AudioVisualizer`），所以频谱模式选 `none` 时仍然旋转。
+- **封面引擎（server.ts）**：三级兜底 `本地内嵌 → iTunes → 网易云`。磁盘缓存 `covers/<id>.<ext>` + 索引 `fastmusic_covers.json`（`{covers:{id:{source,ext,url,matched,fetched_at}}, misses:[id…]}`，原子 tmp+rename，写盘防抖 5s）。`resolveCover()` 顺序：内存索引 → 已查过但无封面（`coverMisses`）直接返回 null → `extractEmbeddedCover()`（第二次 `parseFile`，`skipCovers:false`；music-metadata 不解析 Matroska，所以 `.mkv/.webm` 只能靠远端）→ `itunesCandidates()` + `neteaseCandidates()` 并发，按 `scoreCoverMatch()` 打分（标题精确 100 / 包含 60，歌手一致 +40 / 部分 +25 / 不符 −40，翻唱·歌みた −30，专辑一致 +15，网易云时长 ±3s +20），阈值 65，取最高分候选下载。`GET /api/cover/:id`（`?local=1` 跳过联网，`Cache-Control: public, max-age=31536000`，`X-Cover-Source` 头）；`POST /api/cover/prefetch`（≤200 ids，并发 8）。**列表行只有 `cover_url` 已缓存时才渲染 `<img>`**（`decorateItem()` 只读索引，不联网），所以列表不会触发网络；播放器中间列的唱片始终请求 `/api/cover/:id`（请求本身触发解析）。网易云搜索结果里的 album 只有 `picId`，需要 `neteaseAlbumPic(albumId)` 再查 `/api/v1/album/{id}`（按 album id 缓存，每曲目最多 3 次）。唱片在 `VideoJsPlayer.tsx` 的中间列（不在 `AudioVisualizer`），所以频谱模式选 `none` 时仍然旋转。**歌手/专辑卡片封面补全**：`/api/artists`、`/api/albums` 每条带 `cover_track_id`（已缓存封面曲目 id，否则任意一条代表曲目），`LibraryView.tsx` 的 effect 对当前渲染的 120 张卡片批量 `POST /api/cover/prefetch`（`entityCoverRequestedRef` 去重），头像用 `entityCover()` 取 `avatar_url/cover_url` 或预取回来的 URL，工具栏显示「封面补全：命中 X / N」。
 - **歌词来自网易云明文接口**（不需要 weapi/AES）：`GET /api/lyrics?title=&artist=&duration=` 或 `?id=<网易云ID>`。
   服务端先用 `https://music.163.com/api/search/get?s=...&type=1` 找歌曲 ID，再取
   `https://music.163.com/api/song/lyric?id=...&lv=1&tv=1&rv=1`。**必须带浏览器 UA + Referer**，
   否则网易云返回空 body。搜索接口返回的 `duration` 单位是**毫秒**（打分时除以 1000）。
   结果（含"无歌词"的负结果）缓存在内存 Map 并持久化到 `fastmusic_lyrics.json`（已 gitignore）。
+  解析逻辑是可复用的 `resolveLyrics(title, artist, duration)`（`lyricInFlight` 做同 key 并发去重，
+  写盘防抖 `scheduleLyricSave()` 5s）；先搜 "标题 歌手"，命中（score ≥ 60）即返回，否则再只搜标题，
+  瞬时网络错误重试一次。**网易云对高频请求会限流（连接被重置）**，所以 `POST /api/lyrics/prefetch`
+  （`{ids:[…]}`，≤200 ids）并发只有 3 且每条之间 sleep 200ms（200 条约 40s）。
+  `/api/tracks` 的 `has_lyrics=1` 筛选只读歌词缓存（不联网），前端开关持久在 `localStorage('fastmusic_has_lyrics')`；
+  工具栏「预取歌词」按钮预取当前已加载列表，结果通过 `onLyricStatus` 回调 patch `tracks` 的 `lyric` badge。
   客户端 `VideoJsPlayer.tsx`：`parseLrc` 解析 LRC（一行多个时间戳展开），过滤 作词/作曲/原唱/【…】 这类 credits 行；
   播放区域是**网格舞台**（必须 `gridTemplateRows:1fr` + 列 `min-w-0 min-h-0`，否则 grid 的 1fr 会被内容撑高到
   整篇歌词高度）：**音频** = 三列 `grid-cols-[1fr_240px_1fr]`（左列右对齐 = 歌名/歌手/专辑，中间 240px 留空给唱片
-  并两侧 hairline 分隔，右列 = 歌词竖列）；**MTV/视频** = 两列 `grid-cols-[1fr_340px]`，左侧信息列与唱片留空区
+  并两侧 hairline 分隔，右列 = 歌词竖列）；**MTV/视频** = 两列，列宽用 **inline style**
+  `gridTemplateColumns: 1fr ${effectiveLyricWidth}px`（见下面 Tailwind 坑），左侧信息列与唱片留空区
   不渲染（画面是主角，歌名/歌手/专辑仍出现在顶部控制栏与下方上下文卡片），歌词竖列贴右边缘
   （必须显式 `col-start-2`，否则唯一网格项会落到第一列即左侧），并有一层从左到右渐隐的暗底保证可读。
+  **坑**: Tailwind 的 arbitrary class 是静态扫描生成的，`grid-cols-[1fr_${n}px]` 这种带运行时插值的写法
+  **不会生成任何 CSS 规则**（实测 `document.styleSheets` 里没有 `grid-cols-[1fr_…` 规则），浏览器退化成隐式
+  grid 轨道，歌词列宽度完全失控。所以动态列宽必须写 inline style；静态字面量（如 `grid-cols-[1fr_240px_1fr]`）没问题。
   歌词竖列**贴紧画面右边缘**：舞台 grid 的 `padding-right` 由 `updateLyricRightInset()` 算出
   （容器右缘到 `<video>` 右缘 + 画面居中产生的 letterbox 黑边），在 `loadedmetadata`、
   `fullscreenchange` 和容器 `ResizeObserver` 时重算；全屏时 ≈0 → 贴屏幕右缘，普通/剧场模式
@@ -151,6 +161,8 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   `el.offsetTop - box.clientHeight/2 + el.offsetHeight/2` 算出 `lyricOffset`，内层 div `translateY(-offset)`
   （offset 可为负，前奏时列表需下移），上下行按距离淡出，窗口上下边缘用 Tailwind arbitrary property `[-webkit-mask-image:linear-gradient(...)]` 渐隐（歌词行没有自定义 CSS 类，全是 utility 类；字号是动态值，用 inline `style={{ fontSize }}`）
   歌词用 Noto Serif CJK SC 衬线体；控制栏的 "Aa" 按钮打开歌词样式面板（字号 12/14/17 → `localStorage('fastmusic_lyric_font')`，视频时歌词列宽 240/340/420 → `localStorage('fastmusic_lyric_width')`）。
+  实际列宽是 `effectiveLyricWidth = max(200, min(lyricWidth, round(stageWidth * 0.26)))`（`stageWidth` = 舞台容器宽 − `lyricRightInset`），
+  所以剧场模式画面窄时歌词列自动收窄，全屏时保持用户选择；面板在被封顶时显示「舞台宽度有限，歌词列自动收窄到 Npx」。
   开关是控制栏的 Captions 按钮或 `L` 键，持久在 `localStorage('fastmusic_lyrics')`（默认开启）。
 - **全屏沉浸隐藏鼠标指针**: 控制栏自动隐藏（播放中 3.5s 无鼠标移动 / 鼠标离开播放区）后，
   全屏视频时播放视口 div 的条件 utility 类切成 `cursor-none`（`VideoJsPlayer.tsx`），

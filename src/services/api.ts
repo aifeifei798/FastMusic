@@ -128,6 +128,7 @@ export class MediaApiService {
     limit?: number;
     offset?: number;
     ready_only?: boolean;
+    has_lyrics?: boolean;
   }): Promise<PaginatedTracksResponse> {
     const limit = filters?.limit ?? 30;
     const offset = filters?.offset ?? 0;
@@ -140,6 +141,7 @@ export class MediaApiService {
       if (filters?.media_type) url.searchParams.append('media_type', filters.media_type);
       if (filters?.search) url.searchParams.append('search', filters.search);
       if (filters?.ready_only) url.searchParams.append('ready_only', '1');
+      if (filters?.has_lyrics) url.searchParams.append('has_lyrics', '1');
       if (filters?.sort && filters.sort !== 'default') url.searchParams.append('sort', filters.sort);
       url.searchParams.append('limit', String(limit));
       url.searchParams.append('offset', String(offset));
@@ -245,6 +247,29 @@ export class MediaApiService {
       return (data && data.covers) || {};
     } catch {
       return {};
+    }
+  }
+
+  // 批量预取歌词：服务端并发解析（网易云）并缓存，返回 id → 是否有歌词
+  async prefetchLyrics(ids: string[]): Promise<{ requested: number; resolved: number; cached: number; lyrics: Record<string, boolean> }> {
+    if (ids.length === 0) return { requested: 0, resolved: 0, cached: 0, lyrics: {} };
+    try {
+      const res = await fetch(this.getFullUrl('/api/lyrics/prefetch'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+        signal: AbortSignal.timeout(120000),
+      });
+      if (!res.ok) return { requested: 0, resolved: 0, cached: 0, lyrics: {} };
+      const data = await res.json();
+      return {
+        requested: data.requested ?? 0,
+        resolved: data.resolved ?? 0,
+        cached: data.cached ?? 0,
+        lyrics: data.lyrics || {},
+      };
+    } catch {
+      return { requested: 0, resolved: 0, cached: 0, lyrics: {} };
     }
   }
 

@@ -73,6 +73,11 @@ export default function App() {
   const [readyOnly, setReadyOnly] = useState<boolean>(() => {
     try { return localStorage.getItem('fastmusic_ready_only') === '1'; } catch { return false; }
   });
+  // 只看"网易云有歌词"的曲目。筛选只读服务端歌词缓存（播放过或预取过的曲目才有状态），
+  // 所以配合工具栏的「预取歌词」按钮使用效果最好。持久化到 localStorage。
+  const [hasLyricsOnly, setHasLyricsOnly] = useState<boolean>(() => {
+    try { return localStorage.getItem('fastmusic_has_lyrics') === '1'; } catch { return false; }
+  });
 
   // Player state
   // 播放序列 = 当前正在浏览的列表（曲目列表 / 收藏列表 / 电台随机池），
@@ -114,6 +119,7 @@ export default function App() {
           search: searchQuery || undefined,
           sort: sort === 'default' ? undefined : sort,
           ready_only: readyOnly || undefined,
+          has_lyrics: hasLyricsOnly || undefined,
           limit: 30,
           offset: 0,
         }),
@@ -136,7 +142,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly, sort]);
+  }, [selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly, hasLyricsOnly, sort]);
 
   // Load More Tracks on scroll near bottom (limit=30, offset=currentLength)
   const handleLoadMore = useCallback(async () => {
@@ -150,6 +156,7 @@ export default function App() {
         search: searchQuery || undefined,
         sort: sort === 'default' ? undefined : sort,
         ready_only: readyOnly || undefined,
+        has_lyrics: hasLyricsOnly || undefined,
         limit: 30,
         offset: tracks.length,
       });
@@ -164,7 +171,7 @@ export default function App() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMore, selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly, sort, tracks.length]);
+  }, [isLoadingMore, hasMore, selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly, hasLyricsOnly, sort, tracks.length]);
 
   // 「只看已转码」开关：持久化，切换后 loadData 依赖 readyOnly 会自动重新拉取
   const handleToggleReadyOnly = useCallback(() => {
@@ -173,6 +180,24 @@ export default function App() {
       try { localStorage.setItem('fastmusic_ready_only', next ? '1' : '0'); } catch {}
       return next;
     });
+  }, []);
+
+  // 「只看有歌词」开关：同样持久化，筛选走服务端歌词缓存
+  const handleToggleHasLyrics = useCallback(() => {
+    setHasLyricsOnly((prev) => {
+      const next = !prev;
+      try { localStorage.setItem('fastmusic_has_lyrics', next ? '1' : '0'); } catch {}
+      return next;
+    });
+  }, []);
+
+  // 歌词预取完成后同步列表行的歌词 badge（服务端缓存已写入，避免重新拉取整页）
+  const handleLyricStatus = useCallback((lyrics: Record<string, boolean>) => {
+    setTracks((prev) =>
+      prev.map((t) =>
+        lyrics[t.id] === undefined ? t : { ...t, lyric: lyrics[t.id] ? 'yes' : 'no' }
+      )
+    );
   }, []);
 
   // 排序 / 行密度开关（都持久化）
@@ -654,6 +679,9 @@ export default function App() {
             onFilterMediaType={setMediaTypeFilter}
             readyOnly={readyOnly}
             onToggleReadyOnly={handleToggleReadyOnly}
+            hasLyricsOnly={hasLyricsOnly}
+            onToggleHasLyrics={handleToggleHasLyrics}
+            onLyricStatus={handleLyricStatus}
             sort={sort}
             onSortChange={handleSortChange}
             rowDensity={rowDensity}

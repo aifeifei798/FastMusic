@@ -25,11 +25,11 @@
   - 视频已是 **H.264** → 纯 remux 到 MP4(`-c copy`,秒级,几乎零 CPU);
   - 视频为 **AV1/HEVC** 等 → 转码为 VP9 WebM(一次性,缓存 sidecar `*.mkv.webm`);
   - 缓存命中后走普通 206 Range 流,支持平滑 seek。
-- **专辑封面**: 三级兜底自动获取封面 — ① 文件内嵌封面(ID3 APIC / Vorbis Picture,零网络) ② iTunes Search API(`artworkUrl100` → 600×600) ③ 网易云搜索 + 专辑详情(`?param=500y500` 让 CDN 裁尺寸)。候选按标题/歌手/专辑/时长打分选最佳,结果缓存到 `covers/<id>.<ext>` + 索引 `fastmusic_covers.json`(均已 gitignore)。播放区中间列是**旋转唱片**(黑胶纹路 + 中心封面,播放时 14s 一圈),列表行与歌手/专辑卡片也显示封面;工具栏「预取封面」按钮批量解析当前列表(并发 8,最多 200 条)。
+- **专辑封面**: 三级兜底自动获取封面 — ① 文件内嵌封面(ID3 APIC / Vorbis Picture,零网络) ② iTunes Search API(`artworkUrl100` → 600×600) ③ 网易云搜索 + 专辑详情(`?param=500y500` 让 CDN 裁尺寸)。候选按标题/歌手/专辑/时长打分选最佳,结果缓存到 `covers/<id>.<ext>` + 索引 `fastmusic_covers.json`(均已 gitignore)。播放区中间列是**旋转唱片**(黑胶纹路 + 中心封面,播放时 14s 一圈),列表行与歌手/专辑卡片也显示封面;工具栏「预取封面」按钮批量解析当前列表(并发 8,最多 200 条),歌手 / 专辑标签渲染卡片时自动补全头像(后台批量解析 `cover_track_id`,工具栏显示「封面补全: 命中 X / N」)。
 - **音频播放**: 视频.js 音频图 `source → 10 段 BiquadFilter EQ → boostGain → analyser → destination`;条形 / 波形 / 光晕环 / 对称频谱 / **无** 五种视觉模式;EQ 状态持久化到 localStorage。
 - **音量增强 ×2**: 默认音量 70%,音量滑块旁有 ×2 增强开关(靠音频图里的 GainNode 实现,状态持久化到 localStorage `fastmusic_boost`)。
 - **控制栏自动隐藏**: 播放中 3.5 秒无鼠标操作自动隐藏,鼠标进入播放区重新显示,离开立即隐藏(音频与视频统一)。
-- **歌词**: 网易云歌词竖列(当前行居中高亮,上下行淡出),控制栏 Captions 按钮或 `L` 切换,"Aa" 面板可调字号与(视频时)歌词列宽。
+- **歌词**: 网易云歌词竖列(当前行居中高亮,上下行淡出),控制栏 Captions 按钮或 `L` 切换,"Aa" 面板可调字号与(视频时)歌词列宽;工具栏「预取歌词」按钮批量解析当前列表(并发 3 + 200ms 节流,最多 200 条),预取后切歌歌词秒出;「只看有歌词」筛选走服务端歌词缓存,列表行有歌词图标 badge。
 - **快捷键**: `J`/`K` 上一首/下一首, `S` 收藏, `L` 歌词, `R` 随心电台, `?` 快捷键面板, `Esc` 关闭。
 - **样式**: 全部用 Tailwind utility 类(含 arbitrary variant / arbitrary property),`src/index.css` 只有两个 `@import`,没有手写 CSS 规则。
 
@@ -87,9 +87,9 @@ src/
 | `GET /api/health` | 健康检查 |
 | `GET /api/directories` / `POST /api/directories` | 列出 / 添加扫描目录 |
 | `POST /api/scan` | 增量扫描;`?force=1` 清空并全量重扫 |
-| `GET /api/artists` | 歌手列表(含封面) |
-| `GET /api/albums` | 专辑列表 |
-| `GET /api/tracks` | 曲目列表,支持过滤 + `limit/offset` 或 `page/page_size`;`sort=title|artist|album|duration|size|mtime|random`(random 用 `seed`);`ready_only=1` 只返回可直接播的条目(非 `.mkv` 或 sidecar 已就绪) |
+| `GET /api/artists` | 歌手列表(含 `avatar_url` 已缓存封面 + `cover_track_id` 用于前端补全头像) |
+| `GET /api/albums` | 专辑列表(含 `cover_url` / `cover_track_id`) |
+| `GET /api/tracks` | 曲目列表,支持过滤 + `limit/offset` 或 `page/page_size`;`sort=title|artist|album|duration|size|mtime|random`(random 用 `seed`);`ready_only=1` 只返回可直接播的条目(非 `.mkv` 或 sidecar 已就绪);`has_lyrics=1` 只返回歌词缓存里命中网易云的条目 |
 | `GET /api/radio` | 随心电台 |
 | `GET /api/tracks/:id` | 曲目详情 |
 | `GET /api/stream/:id` | 流式播放(206 Range;`.mkv` 自动 remux/转码) |
@@ -97,6 +97,7 @@ src/
 | `GET /api/transcode/summary` | 全库 `.mkv` 换容器进度汇总:`{total_mkv, ready, running, queued, pending, error}` |
 | `GET /api/transcode/status?ids=a,b,c` | 批量只读状态(列表每 10s 轮询,不触发转码) |
 | `GET /api/lyrics` | 网易云歌词代理:`?title=&artist=&duration=`(自动搜索匹配)或 `?id=<网易云歌曲ID>`;返回 `{found, lyric, tlyric, romalrc}` |
+| `POST /api/lyrics/prefetch` | `{ids:[...]}` 批量解析歌词(并发 3 + 每条 200ms 节流,最多 200 条),返回 `{requested, resolved, cached, lyrics:{id:bool}}`;结果持久化到 `fastmusic_lyrics.json` |
 | `GET /api/cover/:id` | 封面图片字节(内嵌 → iTunes → 网易云三级兜底,磁盘缓存);`?local=1` 只读内嵌不联网;响应带 `X-Cover-Source` 与 `Cache-Control: max-age=31536000` |
 | `POST /api/cover/prefetch` | `{ids:[...]}` 批量解析(并发 8,最多 200 条),返回 `{requested, resolved, cached, covers:{id:url\|null}}` |
 

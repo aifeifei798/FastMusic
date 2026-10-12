@@ -1039,7 +1039,7 @@ app.post('/api/scan', async (req: Request, res: Response) => {
 
 // 2. 获取所有歌手 / UP主
 app.get('/api/artists', (_req: Request, res: Response) => {
-  const artistsMap = new Map<string, { albums: Set<string>; tracks: number; coverId?: string }>();
+  const artistsMap = new Map<string, { albums: Set<string>; tracks: number; coverId?: string; sampleId?: string }>();
 
   for (const item of MEDIA_DB.values()) {
     if (!artistsMap.has(item.artist)) {
@@ -1048,15 +1048,18 @@ app.get('/api/artists', (_req: Request, res: Response) => {
     const info = artistsMap.get(item.artist)!;
     info.albums.add(item.album);
     info.tracks += 1;
-    // 头像取该歌手第一个"封面已缓存"的曲目（只读缓存，不触发网络解析）
+    // 头像取该歌手第一个"封面已缓存"的曲目（只读缓存，不触发网络解析）；
+    // sampleId 是任意一条曲目，前端"补全封面"按钮用它去批量解析。
     if (!info.coverId && coverIndex.has(item.id)) info.coverId = item.id;
+    if (!info.sampleId) info.sampleId = item.id;
   }
 
   const result = Array.from(artistsMap.entries()).map(([artist_name, data]) => ({
     artist_name,
     album_count: data.albums.size,
     track_count: data.tracks,
-    avatar_url: data.coverId ? `/api/cover/${data.coverId}` : undefined
+    avatar_url: data.coverId ? `/api/cover/${data.coverId}` : undefined,
+    cover_track_id: data.coverId || data.sampleId
   }));
 
   res.json(result);
@@ -1065,7 +1068,7 @@ app.get('/api/artists', (_req: Request, res: Response) => {
 // 3. 获取专辑列表
 app.get('/api/albums', (req: Request, res: Response) => {
   const artistFilter = req.query.artist as string | undefined;
-  const albumsMap = new Map<string, { artist_name: string; album_name: string; track_count: number; coverId?: string }>();
+  const albumsMap = new Map<string, { artist_name: string; album_name: string; track_count: number; coverId?: string; sampleId?: string }>();
 
   for (const item of MEDIA_DB.values()) {
     if (artistFilter && item.artist !== artistFilter) continue;
@@ -1076,6 +1079,7 @@ app.get('/api/albums', (req: Request, res: Response) => {
         album_name: item.album,
         track_count: 0,
         coverId: coverIndex.has(item.id) ? item.id : undefined,
+        sampleId: item.id,
       });
     }
     const info = albumsMap.get(key)!;
@@ -1088,7 +1092,8 @@ app.get('/api/albums', (req: Request, res: Response) => {
       artist_name: d.artist_name,
       album_name: d.album_name,
       track_count: d.track_count,
-      cover_url: d.coverId ? `/api/cover/${d.coverId}` : undefined
+      cover_url: d.coverId ? `/api/cover/${d.coverId}` : undefined,
+      cover_track_id: d.coverId || d.sampleId
     }))
   );
 });
@@ -1101,6 +1106,9 @@ app.get('/api/tracks', (req: Request, res: Response) => {
   const search = (req.query.search as string | undefined)?.toLowerCase();
   // ready_only=1: 只返回"立刻可播"的条目（非 .mkv，或 .mkv 的 sidecar 已就绪）
   const readyOnly = req.query.ready_only === '1' || req.query.ready_only === 'true';
+  // has_lyrics=1: 只返回歌词缓存里已命中（网易云有歌词）的条目。只读缓存，不联网；
+  // 没预取/没播放过的曲目 lyric 为 null，会被过滤掉。
+  const hasLyrics = req.query.has_lyrics === '1' || req.query.has_lyrics === 'true';
   // sort: title | artist | album | duration | size | mtime | random（默认 = 索引顺序）
   const sort = (req.query.sort as string | undefined) || 'default';
   const seed = parseInt(req.query.seed as string, 10) || 0;
@@ -1126,6 +1134,10 @@ app.get('/api/tracks', (req: Request, res: Response) => {
     if (readyOnly) {
       const info = transcodeInfo(item);
       if (info && info.status !== 'ready') continue;
+    }
+    if (hasLyrics) {
+      const lc = lyricCache.get(lyricCacheKey(item.title, item.artist));
+      if (!lc || !lc.found) continue;
     }
     results.push(item);
   }
@@ -1424,6 +1436,16 @@ function saveLyricCache(): void {
   }
 }
 
+// 预取一次可能解析几百条歌词，逐条写盘太浪费 → 防抖，最多每 5 秒写一次
+let lyricSaveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleLyricSave(): void {
+  if (lyricSaveTimer) return;
+  lyricSaveTimer = setTimeout(() => {
+    lyricSaveTimer = null;
+    saveLyricCache();
+  }, 5000);
+}
+
 function normalizeText(s: string): string {
   return (s || '')
     .toLowerCase()
@@ -1492,6 +1514,78 @@ function scoreCandidate(cand: any, title: string, artist: string, duration: numb
   return score;
 }
 
+// 同一 (标题, 歌手) 并发请求只解析一次（预取按钮 + 播放器同时请求）
+const lyricInFlight = new Map<string, Promise<LyricResult | null>>();
+
+// 解析一首歌的歌词：网易云搜索 → 打分选候选 → 取歌词。负结果也缓存，避免每次切歌都联网。
+// 返回 null = 网易云没有歌词（或不可达）。
+async function resolveLyrics(
+  title: string,
+  artist: string,
+  duration: number
+): Promise<LyricResult | null> {
+  const key = lyricCacheKey(title, artist);
+  const cached = lyricCache.get(key);
+  if (cached) return cached.found ? cached : null;
+
+  const inflight = lyricInFlight.get(key);
+  if (inflight) return inflight;
+
+  const task = (async (): Promise<LyricResult | null> => {
+    try {
+      // 候选来源：先 "标题 歌手"，若无匹配再只搜标题（网易云搜索对原唱/翻唱排序不稳定）。
+      // 第一个查询命中即返回，所以常见情况只有 2 次请求（搜索 + 歌词）。
+      const queries = [artist ? `${title} ${artist}` : title, ...(artist && title ? [title] : [])];
+      const seen = new Set<number>();
+
+      for (const q of queries) {
+        let songs: any[] = [];
+        // 网易云对高频请求会限流（连接被重置），瞬时失败重试一次
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            songs = await searchNeteaseSongs(q, 10);
+            break;
+          } catch (e) {
+            if (attempt === 1) throw e;
+            await new Promise((r) => setTimeout(r, 1200));
+          }
+        }
+
+        for (const cand of songs) {
+          if (!cand?.id || seen.has(cand.id)) continue;
+          seen.add(cand.id);
+          if (scoreCandidate(cand, title, artist, duration) < 60) continue;
+          const lyric = await fetchNeteaseLyric(cand.id);
+          if (lyric) {
+            lyric.matched_title = cand.name || title;
+            lyric.matched_artist = (cand.artists || []).map((a: any) => a?.name || '').join(', ') || artist;
+            if (lyricCache.size >= LYRIC_CACHE_MAX) lyricCache.delete(lyricCache.keys().next().value as string);
+            lyricCache.set(key, lyric);
+            scheduleLyricSave();
+            return lyric;
+          }
+        }
+      }
+
+      // 负结果也缓存，避免每次切歌都重复打网络
+      const miss: LyricResult = { found: false, lyric: '', tlyric: '', romalrc: '', fetched_at: Date.now() };
+      lyricCache.set(key, miss);
+      scheduleLyricSave();
+      return null;
+    } catch (e) {
+      console.warn('[Lyrics] 获取歌词失败', (e as Error).message);
+      return null;
+    }
+  })();
+
+  lyricInFlight.set(key, task);
+  try {
+    return await task;
+  } finally {
+    lyricInFlight.delete(key);
+  }
+}
+
 // 8. 歌词：?title=&artist=&duration= 自动搜索匹配；?id= 直接取网易云歌曲 ID
 app.get('/api/lyrics', async (req: Request, res: Response) => {
   const title = (req.query.title as string | undefined) || '';
@@ -1504,59 +1598,80 @@ app.get('/api/lyrics', async (req: Request, res: Response) => {
     return;
   }
 
-  const key = directId ? `id:${directId}` : lyricCacheKey(title, artist);
+  // 播放器直接给网易云 ID 时不走搜索
+  if (directId) {
+    const key = `id:${directId}`;
+    const cached = lyricCache.get(key);
+    if (cached) {
+      res.json({ ...cached, cached: true });
+      return;
+    }
+    try {
+      const lyric = await fetchNeteaseLyric(directId);
+      const result: LyricResult = lyric
+        ? { ...lyric, matched_title: title }
+        : { found: false, lyric: '', tlyric: '', romalrc: '', fetched_at: Date.now() };
+      lyricCache.set(key, result);
+      scheduleLyricSave();
+      res.json({ ...result, cached: false });
+    } catch (e) {
+      console.warn('[Lyrics] 获取歌词失败', (e as Error).message);
+      res.status(502).json({ found: false, detail: '获取歌词失败（网易云不可达或被风控）' });
+    }
+    return;
+  }
+
+  const key = lyricCacheKey(title, artist);
   const cached = lyricCache.get(key);
   if (cached) {
     res.json({ ...cached, cached: true });
     return;
   }
 
-  try {
-    // 候选来源：先 "标题 歌手"，若无匹配再只搜标题（网易云搜索对原唱/翻唱排序不稳定）
-    const queries = directId
-      ? []
-      : [artist ? `${title} ${artist}` : title, ...(artist && title ? [title] : [])];
-    const candidates: any[] = [];
-    const seen = new Set<number>();
-    for (const q of queries) {
-      for (const cand of await searchNeteaseSongs(q, 10)) {
-        if (cand?.id && !seen.has(cand.id)) {
-          seen.add(cand.id);
-          candidates.push(cand);
-        }
-      }
-    }
-    if (directId) candidates.push({ id: directId, name: title, artists: [{ name: artist }] });
-
-    let result: LyricResult | null = null;
-    for (const cand of candidates) {
-      if (!cand?.id) continue;
-      if (!directId && scoreCandidate(cand, title, artist, duration) < 60) continue;
-      const lyric = await fetchNeteaseLyric(cand.id);
-      if (lyric) {
-        lyric.matched_title = cand.name || title;
-        lyric.matched_artist = (cand.artists || []).map((a: any) => a?.name || '').join(', ') || artist;
-        result = lyric;
-        break;
-      }
-    }
-
-    if (!result) {
-      // 负结果也缓存，避免每次切歌都重复打网络
-      const miss: LyricResult = { found: false, lyric: '', tlyric: '', romalrc: '', fetched_at: Date.now() };
-      lyricCache.set(key, miss);
-      res.json({ ...miss, cached: false });
-      return;
-    }
-
-    if (lyricCache.size >= LYRIC_CACHE_MAX) lyricCache.delete(lyricCache.keys().next().value as string);
-    lyricCache.set(key, result);
-    saveLyricCache();
-    res.json({ ...result, cached: false });
-  } catch (e) {
-    console.warn('[Lyrics] 获取歌词失败', (e as Error).message);
-    res.status(502).json({ found: false, detail: '获取歌词失败（网易云不可达或被风控）' });
+  const result = await resolveLyrics(title, artist, duration);
+  if (!result) {
+    res.json({ found: false, lyric: '', tlyric: '', romalrc: '', cached: false });
+    return;
   }
+  res.json({ ...result, cached: false });
+});
+
+// 8.1 批量预取歌词：{ids:[...]}（服务端并发 3，最多 200 条），结果写入歌词缓存。
+// 预取后播放时歌词秒出；"只看有歌词"筛选也依赖同一缓存。
+// 网易云对高频请求限流，所以每条之间小睡 200ms（200 条约 40s）。
+app.post('/api/lyrics/prefetch', async (req: Request, res: Response) => {
+  const idsRaw = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+  const ids = idsRaw.slice(0, 200);
+  if (ids.length === 0) {
+    res.json({ requested: 0, resolved: 0, cached: lyricCache.size, lyrics: {} });
+    return;
+  }
+
+  const lyrics: Record<string, boolean> = {};
+  const queue = ids.slice();
+  const concurrency = Math.min(3, queue.length);
+  await Promise.all(
+    Array.from({ length: concurrency }, async () => {
+      while (queue.length > 0) {
+        const id = queue.shift()!;
+        const item = MEDIA_DB.get(id);
+        if (!item) {
+          lyrics[id] = false;
+          continue;
+        }
+        const hit = lyricCache.get(lyricCacheKey(item.title, item.artist));
+        if (hit) {
+          lyrics[id] = hit.found;
+          continue;
+        }
+        lyrics[id] = (await resolveLyrics(item.title, item.artist, item.duration || 0)) !== null;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    })
+  );
+
+  const resolved = Object.values(lyrics).filter(Boolean).length;
+  res.json({ requested: ids.length, resolved, cached: lyricCache.size, lyrics });
 });
 
 // ============================================================
