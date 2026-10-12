@@ -12,6 +12,7 @@ import {
   Waves
 } from 'lucide-react';
 import { MediaItem, RadioChannel } from '../types/media';
+import { t } from '../utils/i18n';
 
 interface RadioStationBannerProps {
   isRadioMode: boolean;
@@ -59,12 +60,12 @@ export const RadioStationBanner: React.FC<RadioStationBannerProps> = ({
                 FastMusic FM · {frequency}
               </span>
               <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-accent/20 text-accent-soft border border-accent/30">
-                LIVE 随心广播
+                {t('LIVE 随心广播')}
               </span>
             </div>
 
             <h3 className="text-base sm:text-lg font-bold text-ink tracking-tight flex items-center gap-2 truncate">
-              <span>随心电台正在漫游</span>
+              <span>{t('随心电台正在漫游')}</span>
               {currentTrack && (
                 <span className="text-xs font-normal text-ink-3 truncate font-mono">
                   &bull; {currentTrack.title}
@@ -74,7 +75,7 @@ export const RadioStationBanner: React.FC<RadioStationBannerProps> = ({
 
             <p className="text-xs text-muted flex items-center gap-1.5 mt-0.5">
               <Sparkles className="w-3 h-3 text-amber" />
-              <span>智能全库洗牌算法 · 听完自动无缝切下一首随机曲目</span>
+              <span>{t('智能全库洗牌算法 · 听完自动无缝切下一首随机曲目')}</span>
             </p>
           </div>
         </div>
@@ -92,7 +93,7 @@ export const RadioStationBanner: React.FC<RadioStationBannerProps> = ({
               }`}
             >
               <Shuffle className="w-3.5 h-3.5" />
-              <span>全库漫游</span>
+              <span>{t('全库漫游')}</span>
             </button>
             <button
               onClick={() => onSwitchChannel('audio')}
@@ -103,7 +104,7 @@ export const RadioStationBanner: React.FC<RadioStationBannerProps> = ({
               }`}
             >
               <Music className="w-3.5 h-3.5" />
-              <span>纯音专线</span>
+              <span>{t('纯音专线')}</span>
             </button>
             <button
               onClick={() => onSwitchChannel('video')}
@@ -114,24 +115,24 @@ export const RadioStationBanner: React.FC<RadioStationBannerProps> = ({
               }`}
             >
               <Film className="w-3.5 h-3.5" />
-              <span>MTV 视听</span>
+              <span>{t('MTV 视听')}</span>
             </button>
           </div>
 
           {/* Action: Next Random Track / 切台 */}
           <button
             onClick={onNextRandom}
-            title="换一首随机电台曲目"
+            title={t('换一首随机电台曲目')}
             className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber to-accent hover:from-amber hover:to-accent text-white text-xs font-semibold shadow-md shadow-amber/30 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
           >
             <SkipForward className="w-4 h-4 fill-white" />
-            <span>切台 / 换一首</span>
+            <span>{t('切台 / 换一首')}</span>
           </button>
 
           {/* Action: Exit Radio Mode */}
           <button
             onClick={onExitRadio}
-            title="退出随心电台模式"
+            title={t('退出随心电台模式')}
             className="p-1.5 rounded-xl bg-surface/90 hover:bg-surface-2 border border-line text-muted hover:text-ink transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />

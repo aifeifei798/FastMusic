@@ -1,4 +1,5 @@
 import { MediaItem, ArtistSummary, AlbumSummary, ScanResponse, PaginatedTracksResponse, RadioChannel, TranscodeStatus, TranscodeInfo, TranscodeSummary, LyricsResult, TrackSort, CacheJob, CacheJobKind, CacheStatus } from '../types/media';
+import { t, tServerMessage } from '../utils/i18n';
 export class MediaApiService {
   private baseUrl: string;
 
@@ -37,15 +38,15 @@ export class MediaApiService {
         const tracksRes = await fetch(this.getFullUrl('/api/tracks'), { method: 'GET', signal: AbortSignal.timeout(3000) });
         const tracks = tracksRes.ok ? await tracksRes.json() : [];
         const count = Array.isArray(tracks) ? tracks.length : tracks.total ?? 0;
-        return { ok: true, message: 'Express / 媒体后端服务连接成功！', trackCount: count };
+        return { ok: true, message: t('Express / 媒体后端服务连接成功！'), trackCount: count };
       }
-      return { ok: false, message: `服务响应错误: 状态码 ${res.status}` };
+      return { ok: false, message: t('服务响应错误: 状态码 {status}', { status: res.status }) };
     } catch (err: any) {
       return {
         ok: false,
         message: err.name === 'TimeoutError'
-          ? '连接超时，请确认服务已启动'
-          : `无法连接到 ${this.baseUrl || '当前 Express 服务'}。`
+          ? t('连接超时，请确认服务已启动')
+          : t('无法连接到 {url}。', { url: this.baseUrl || t('当前 Express 服务') })
       };
     }
   }
@@ -89,7 +90,7 @@ export class MediaApiService {
     });
     if (!res.ok) {
       const errJson = await res.json().catch(() => null);
-      throw new Error(errJson?.detail || `扫描失败: ${res.statusText}`);
+      throw new Error(tServerMessage(errJson?.detail || '') || t('扫描失败: {status}', { status: res.statusText }));
     }
     return res.json();
   }

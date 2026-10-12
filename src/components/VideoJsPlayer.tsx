@@ -31,6 +31,7 @@ import {
 import { MediaItem, PlayMode, TranscodeStatus } from '../types/media';
 import { AudioVisualizer, VisualizerMode } from './AudioVisualizer';
 import { mediaApi } from '../services/api';
+import { t } from '../utils/i18n';
 
 // --- 10段均衡器 (Equalizer) 配置 ---
 // 均衡器 采用 audealize 的图形均衡器 模型：N 个 "peaking" BiquadFilter 串联，
@@ -1015,7 +1016,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           </div>
 
           <div className="hidden sm:block text-xs text-ink-3 font-medium truncate max-w-xs md:max-w-md">
-            {currentTrack ? `${currentTrack.artist} — ${currentTrack.title}` : '未选择曲目'}
+            {currentTrack ? `${t(currentTrack.artist)} — ${currentTrack.title}` : t('未选择曲目')}
           </div>
         </div>
 
@@ -1036,12 +1037,12 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             )}
             <span>
               {transcode.status === 'error'
-                ? '转码失败'
+                ? t('转码失败')
                 : transcode.status === 'queued'
-                ? '排队中…'
+                ? t('排队中…')
                 : transcode.progress > 0
-                ? `转码中 ${transcode.progress}%`
-                : '转码中…'}
+                ? t('转码中 {progress}%', { progress: transcode.progress })
+                : t('转码中…')}
             </span>
           </div>
         )}
@@ -1051,7 +1052,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           {isVideo && (
             <button
               onClick={togglePiP}
-              title="画中画 (Picture in Picture)"
+              title={t('画中画 (Picture in Picture)')}
               className="p-1.5 rounded-lg bg-surface/70 hover:bg-surface-2 text-ink-3 hover:text-ink transition-colors border border-line"
             >
               <PictureInPicture className="w-4 h-4" />
@@ -1066,7 +1067,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   e.stopPropagation();
                   changeVisualizerMode('bars');
                 }}
-                title="经典柱状频谱 (Bars EQ)"
+                title={t('经典柱状频谱 (Bars EQ)')}
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
                   visualizerMode === 'bars'
                     ? 'bg-accent text-white shadow-sm'
@@ -1074,7 +1075,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 }`}
               >
                 <BarChart2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">柱状频谱</span>
+                <span className="hidden sm:inline">{t('柱状频谱')}</span>
               </button>
 
               <button
@@ -1082,7 +1083,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   e.stopPropagation();
                   changeVisualizerMode('wave');
                 }}
-                title="示波器波形 (Waveform)"
+                title={t('示波器波形 (Waveform)')}
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
                   visualizerMode === 'wave'
                     ? 'bg-accent text-white shadow-sm'
@@ -1090,7 +1091,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 }`}
               >
                 <Waves className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">波形图</span>
+                <span className="hidden sm:inline">{t('波形图')}</span>
               </button>
 
               <button
@@ -1098,7 +1099,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   e.stopPropagation();
                   changeVisualizerMode('circle');
                 }}
-                title="光晕环状频谱 (Circular Halo)"
+                title={t('光晕环状频谱 (Circular Halo)')}
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
                   visualizerMode === 'circle'
                     ? 'bg-accent text-white shadow-sm'
@@ -1106,7 +1107,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 }`}
               >
                 <Disc className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">光晕环</span>
+                <span className="hidden sm:inline">{t('光晕环')}</span>
               </button>
 
               <button
@@ -1114,7 +1115,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   e.stopPropagation();
                   changeVisualizerMode('mirrored');
                 }}
-                title="对称双向频谱 (Mirrored EQ)"
+                title={t('对称双向频谱 (Mirrored EQ)')}
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
                   visualizerMode === 'mirrored'
                     ? 'bg-accent text-white shadow-sm'
@@ -1122,7 +1123,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 }`}
               >
                 <Activity className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">对称频谱</span>
+                <span className="hidden sm:inline">{t('对称频谱')}</span>
               </button>
 
               <button
@@ -1130,7 +1131,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   e.stopPropagation();
                   changeVisualizerMode('none');
                 }}
-                title="无频谱（纯黑舞台，只保留歌词与信息）"
+                title={t('无频谱（纯黑舞台，只保留歌词与信息）')}
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
                   visualizerMode === 'none'
                     ? 'bg-accent text-white shadow-sm'
@@ -1138,7 +1139,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 }`}
               >
                 <EyeOff className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">无</span>
+                <span className="hidden sm:inline">{t('无')}</span>
               </button>
             </div>
           )}
@@ -1176,15 +1177,15 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             )}
             <p className="text-ink-2 font-medium text-lg">
               {transcode.status === 'error'
-                ? '转码失败'
+                ? t('转码失败')
                 : transcode.status === 'queued'
-                ? '后台转码排队中…'
+                ? t('后台转码排队中…')
                 : transcode.progress > 0
-                ? `转码中 ${transcode.progress}%`
-                : '转码中…'}
+                ? t('转码中 {progress}%', { progress: transcode.progress })
+                : t('转码中…')}
             </p>
             <p className="text-xs text-muted-2 max-w-md text-center">
-              MKV 需转成 WebM(VP9+Opus) 才能在本机 Chrome 出画面，完成后自动开始播放。
+              {t('MKV 需转成 WebM(VP9+Opus) 才能在本机 Chrome 出画面，完成后自动开始播放。')}
             </p>
           </div>
         )}
@@ -1232,18 +1233,18 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           }}
           title={
             lyricMatch
-              ? `歌词来源: 网易云 · ${lyricMatch.title} - ${lyricMatch.artist}`
+              ? t('歌词来源: 网易云 · {title} - {artist}', { title: lyricMatch.title, artist: lyricMatch.artist })
               : ''
           }
         >
           {/* 左列: 正在播放的曲目信息 (仅音频曲目; min-h-0 让 grid 的 1fr 行不被内容撑高) */}
           {!isVideo && (
             <div className="min-w-0 min-h-0 flex flex-col justify-center gap-1.5 text-right pr-3">
-              <span className="text-[10px] uppercase tracking-[0.22em] text-muted-2">正在播放</span>
+              <span className="text-[10px] uppercase tracking-[0.22em] text-muted-2">{t('正在播放')}</span>
               <h2 className="text-lg sm:text-xl font-bold leading-tight text-ink break-words drop-shadow-md">
                 {currentTrack.title}
               </h2>
-              <p className="text-sm font-medium text-accent">{currentTrack.artist || '未知歌手'}</p>
+              <p className="text-sm font-medium text-accent">{t(currentTrack.artist || '未知歌手')}</p>
               {currentTrack.album && (
                 <p className="text-[11px] leading-snug text-muted-2 break-words">{currentTrack.album}</p>
               )}
@@ -1321,14 +1322,14 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               {lyricStatus === 'loading' && (
                 <div className={`flex items-center gap-2 text-xs ${isVideo ? 'text-lyric-ink/70' : 'text-muted'}`}>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>正在从网易云获取歌词…</span>
+                  <span>{t('正在从网易云获取歌词…')}</span>
                 </div>
               )}
 
               {lyricStatus === 'none' && (
                 <div className={`flex items-center gap-2 text-xs ${isVideo ? 'text-lyric-ink/60' : 'text-muted-2'}`}>
                   <Captions className="w-3.5 h-3.5" />
-                  <span>网易云未找到「{currentTrack.title}」的歌词</span>
+                  <span>{t('网易云未找到「{title}」的歌词', { title: currentTrack.title })}</span>
                 </div>
               )}
 
@@ -1380,9 +1381,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       {/* 歌词样式面板 — 字号 + (视频时) 歌词列宽度, 持久在 localStorage */}
       {showLyricSettings && (
         <div className="absolute right-4 bottom-16 z-40 w-64 rounded-xl bg-app/85 border border-line p-3 flex flex-col gap-2 shadow-2xl">
-          <div className="text-[11px] font-semibold text-ink-3">歌词样式</div>
+          <div className="text-[11px] font-semibold text-ink-3">{t('歌词样式')}</div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-muted-2">字号</span>
+            <span className="text-[11px] text-muted-2">{t('字号')}</span>
             {[12, 14, 17].map((v) => (
               <button
                 key={v}
@@ -1395,13 +1396,13 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   lyricFont === v ? 'bg-accent/20 text-accent-soft border border-accent/40' : 'bg-surface-2 text-muted hover:text-ink'
                 }`}
               >
-                {v === 12 ? '小' : v === 14 ? '中' : '大'}
+                {v === 12 ? t('小') : v === 14 ? t('中') : t('大')}
               </button>
             ))}
           </div>
           {isVideo && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-muted-2">宽度</span>
+              <span className="text-[11px] text-muted-2">{t('宽度')}</span>
               {[240, 340, 420].map((v) => (
                 <button
                   key={v}
@@ -1414,16 +1415,16 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                     lyricWidth === v ? 'bg-accent/20 text-accent-soft border border-accent/40' : 'bg-surface-2 text-muted hover:text-ink'
                   }`}
                 >
-                  {v === 240 ? '窄' : v === 340 ? '标准' : '宽'}
+                  {v === 240 ? t('窄') : v === 340 ? t('标准') : t('宽')}
                 </button>
               ))}
             </div>
           )}
           {isVideo && effectiveLyricWidth < lyricWidth && (
-            <p className="text-[10px] text-muted-2">舞台宽度有限，歌词列自动收窄到 {effectiveLyricWidth}px</p>
+            <p className="text-[10px] text-muted-2">{t('舞台宽度有限，歌词列自动收窄到 {width}px', { width: effectiveLyricWidth })}</p>
           )}
           {!showLyrics && (
-            <p className="text-[10px] text-muted-2">歌词当前关闭 — 打开后设置生效</p>
+            <p className="text-[10px] text-muted-2">{t('歌词当前关闭 — 打开后设置生效')}</p>
           )}
         </div>
       )}
@@ -1436,22 +1437,22 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           <div className="flex items-center justify-between">
             <span className="text-xs text-ink-2 flex items-center gap-1">
               <Sliders className="w-3.5 h-3.5" />
-              均衡器 · {eqEnabled ? 'ON' : 'OFF'} · {eqPreset === 'manual' ? '手动' : EQ_PRESETS.find((p) => p.name === eqPreset)?.label || '平'}
+              {t('均衡器 · {state} · {preset}', { state: eqEnabled ? 'ON' : 'OFF', preset: eqPreset === 'manual' ? t('手动') : t(EQ_PRESETS.find((p) => p.name === eqPreset)?.label || '平') })}
             </span>
             <div className="flex items-center gap-1">
               <button
                 onClick={(e) => { e.stopPropagation(); toggleEqEnabled(); }}
-                title="均衡器 开/关"
+                title={t('均衡器 开/关')}
                 className="p-1 rounded-md bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink text-2xs"
               >
-                {eqEnabled ? '关' : '开'}
+                {eqEnabled ? t('关') : t('开')}
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); resetEq(); }}
-                title="重置均衡器 (平)"
+                title={t('重置均衡器 (平)')}
                 className="p-1 rounded-md bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink text-2xs"
               >
-                平
+                {t('平')}
               </button>
             </div>
           </div>
@@ -1462,14 +1463,14 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               <button
                 key={p.name}
                 onClick={(e) => { e.stopPropagation(); applyEqPreset(p.name); }}
-                title={`预设: ${p.label}`}
+                title={t('预设: {label}', { label: t(p.label) })}
                 className={`p-1 rounded-md text-2xs transition-colors ${
                   eqPreset === p.name
                     ? 'bg-accent/20 text-accent border border-accent/60'
                     : 'bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink'
                 }`}
               >
-                {p.label}
+                {t(p.label)}
               </button>
             ))}
           </div>
@@ -1494,7 +1495,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                       style={{ bottom: `${pct * 100}%` }}
                     />
                   </div>
-                  <span className="text-2xs text-muted" title={`频段: ${EQ_BAND_FULL_LABELS[i]}`}>{EQ_BAND_LABELS[i]}</span>
+                  <span className="text-2xs text-muted" title={t('频段: {label}', { label: EQ_BAND_FULL_LABELS[i] })}>{EQ_BAND_LABELS[i]}</span>
                 </div>
               );
             })}
@@ -1556,7 +1557,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={onPrev}
-              title="上一首 (Previous)"
+              title={t('上一首 (Previous)')}
               className="p-2 rounded-full text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
             >
               <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1564,7 +1565,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
             <button
               onClick={togglePlay}
-              title={isPlaying ? '暂停 (Space)' : '播放 (Space)'}
+              title={isPlaying ? t('暂停 (Space)') : t('播放 (Space)')}
               className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-accent hover:bg-accent text-white flex items-center justify-center shadow-lg transition-transform active:scale-95"
             >
               {isPlaying ? (
@@ -1576,7 +1577,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
             <button
               onClick={onNext}
-              title="下一首 (Next)"
+              title={t('下一首 (Next)')}
               className="p-2 rounded-full text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
             >
               <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1596,7 +1597,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <div className="flex items-center gap-2 group/vol">
               <button
                 onClick={toggleMute}
-                title={isMuted ? '取消静音 (M)' : '静音 (M)'}
+                title={isMuted ? t('取消静音 (M)') : t('静音 (M)')}
                 className="text-muted hover:text-ink transition-colors"
               >
                 {isMuted || volume === 0 ? (
@@ -1614,7 +1615,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
                 className="w-16 sm:w-20 h-1 accent-accent bg-surface-2 rounded-lg cursor-pointer"
-                title={`音量: ${Math.round(volume * 100)}%${volumeBoost ? ' ×2 增强' : ''}`}
+                title={t('音量: {volume}%{boost}', { volume: Math.round(volume * 100), boost: volumeBoost ? t(' ×2 增强') : '' })}
               />
 
               {/* 音量增强 ×2 开关 */}
@@ -1623,7 +1624,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   e.stopPropagation();
                   toggleVolumeBoost();
                 }}
-                title={volumeBoost ? '音量增强 ×2 (已开启, 点击关闭)' : '音量增强 ×2 (音乐增强)'}
+                title={volumeBoost ? t('音量增强 ×2 (已开启, 点击关闭)') : t('音量增强 ×2 (音乐增强)')}
                 className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                   volumeBoost
                     ? 'bg-accent text-white shadow-sm'
@@ -1641,7 +1642,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   e.stopPropagation();
                   onToggleFavorite();
                 }}
-                title={isFavorited ? '已收藏 (点击取消收藏)' : '收藏当前曲目'}
+                title={isFavorited ? t('已收藏 (点击取消收藏)') : t('收藏当前曲目')}
                 className={`p-2 rounded-lg hover:bg-surface-2/80 transition-colors cursor-pointer ${
                   isFavorited ? 'text-accent' : 'text-muted hover:text-accent'
                 }`}
@@ -1653,15 +1654,15 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             {/* Play Mode Switcher */}
             <button
               onClick={cyclePlayMode}
-              title={`模式: ${
-                playMode === 'sequence'
-                  ? '顺序播放'
+              title={t('模式: {mode}', {
+                mode: playMode === 'sequence'
+                  ? t('顺序播放')
                   : playMode === 'loop-all'
-                  ? '列表循环'
+                  ? t('列表循环')
                   : playMode === 'loop-one'
-                  ? '单曲循环'
-                  : '随机播放'
-              }`}
+                  ? t('单曲循环')
+                  : t('随机播放')
+              })}
               className={`p-2 rounded-lg hover:bg-surface-2/80 transition-colors ${
                 playMode === 'loop-one'
                   ? 'text-accent font-bold'
@@ -1711,7 +1712,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             {/* Fullscreen Toggle */}
             <button
               onClick={toggleFullscreen}
-              title={isFullscreen ? '退出全屏 (F)' : '全屏播放 (F)'}
+              title={isFullscreen ? t('退出全屏 (F)') : t('全屏播放 (F)')}
               className="p-2 rounded-lg text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
             >
               {isFullscreen ? (
@@ -1725,7 +1726,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             {!isFullscreen && (
               <button
                 onClick={onToggleTheater}
-                title={isTheaterMode ? '退出剧场模式' : '剧场宽屏模式'}
+                title={isTheaterMode ? t('退出剧场模式') : t('剧场宽屏模式')}
                 className={`p-2 rounded-lg hover:bg-surface-2/80 transition-colors ${
                   isTheaterMode ? 'text-accent' : 'text-muted hover:text-ink'
                 }`}
@@ -1740,7 +1741,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 e.stopPropagation();
                 toggleLyrics();
               }}
-              title={showLyrics ? '隐藏歌词 (L)' : '显示歌词 (L)'}
+              title={showLyrics ? t('隐藏歌词 (L)') : t('显示歌词 (L)')}
               className={`p-2 rounded-lg hover:bg-surface-2/80 transition-colors ${
                 showLyrics ? 'text-accent' : 'text-muted hover:text-ink'
               }`}
@@ -1754,7 +1755,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 e.stopPropagation();
                 setShowLyricSettings((v) => !v);
               }}
-              title="歌词字号与宽度"
+              title={t('歌词字号与宽度')}
               className={`px-2 py-1 rounded-lg text-[11px] font-semibold hover:bg-surface-2/80 transition-colors ${
                 showLyricSettings ? 'text-accent' : 'text-muted hover:text-ink'
               }`}
@@ -1768,7 +1769,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 e.stopPropagation();
                 setShowEqPanel(!showEqPanel);
               }}
-              title="均衡器 (Equalizer) 面板"
+              title={t('均衡器 (Equalizer) 面板')}
               className={`p-2 rounded-lg hover:bg-surface-2/80 transition-colors ${
                 showEqPanel ? 'text-accent' : 'text-muted hover:text-ink'
               }`}

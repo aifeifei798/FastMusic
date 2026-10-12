@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, History, Trash2, Play, Film, Music, Search } from 'lucide-react';
 import { MediaItem, PlayHistoryItem } from '../types/media';
 import { SCROLLBAR_CLASSES } from '../utils/ui';
+import { t } from '../utils/i18n';
 
 interface PlayHistoryModalProps {
   isOpen: boolean;
@@ -26,10 +27,10 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
 
   const formatTimeAgo = (timestamp: number): string => {
     const diff = Math.floor((Date.now() - timestamp) / 1000);
-    if (diff < 60) return '刚刚';
-    if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
-    if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} 天前`;
+    if (diff < 60) return t('刚刚');
+    if (diff < 3600) return t('{n} 分钟前', { n: Math.floor(diff / 60) });
+    if (diff < 86400) return t('{n} 小时前', { n: Math.floor(diff / 3600) });
+    if (diff < 86400 * 7) return t('{n} 天前', { n: Math.floor(diff / 86400) });
     const date = new Date(timestamp);
     return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
   };
@@ -53,10 +54,10 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
             <History className="w-5 h-5 text-accent" />
             <div>
               <h3 className="font-semibold text-ink text-sm sm:text-base">
-                播放历史记录
+                {t('播放历史记录')}
               </h3>
               <p className="text-[11px] text-muted">
-                已保存在本地 localStorage 中，共 {history.length} 条播放记录
+                {t('已保存在本地 localStorage 中，共 {n} 条播放记录', { n: history.length })}
               </p>
             </div>
           </div>
@@ -65,11 +66,11 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
             {history.length > 0 && (
               <button
                 onClick={onClearHistory}
-                title="清空全部历史记录"
+                title={t('清空全部历史记录')}
                 className="px-2.5 py-1 rounded-lg text-muted hover:text-accent hover:bg-surface-2 transition-colors text-xs flex items-center gap-1"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>清空</span>
+                <span>{t('清空')}</span>
               </button>
             )}
             <button
@@ -87,7 +88,7 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
             <Search className="w-3.5 h-3.5 text-muted-2" />
             <input
               type="text"
-              placeholder="在播放历史中搜索..."
+              placeholder={t('在播放历史中搜索...')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 bg-transparent text-xs text-ink-2 placeholder-muted-2 focus:outline-none"
@@ -109,12 +110,12 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
             <div className="py-16 text-center text-muted-2 flex flex-col items-center">
               <History className="w-12 h-12 stroke-1 text-faint mb-3" />
               <p className="text-sm font-medium text-ink-3">
-                {history.length === 0 ? '暂无播放历史记录' : '未找到匹配的播放记录'}
+                {history.length === 0 ? t('暂无播放历史记录') : t('未找到匹配的播放记录')}
               </p>
               <p className="text-xs text-muted-2 mt-1 max-w-xs">
                 {history.length === 0
-                  ? '点击任意曲目开始播放，系统将自动记录并保存在本地浏览器中。'
-                  : '请尝试更换搜索关键字。'}
+                  ? t('点击任意曲目开始播放，系统将自动记录并保存在本地浏览器中。')
+                  : t('请尝试更换搜索关键字。')}
               </p>
             </div>
           ) : (
@@ -149,7 +150,7 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
                         {item.track.title}
                       </div>
                       <div className="text-[11px] text-muted truncate mt-0.5 flex items-center gap-2">
-                        <span className="text-ink-3">{item.track.artist}</span>
+                        <span className="text-ink-3">{t(item.track.artist)}</span>
                         <span aria-hidden="true" className="text-faint">·</span>
                         <span className="truncate">{item.track.album}</span>
                       </div>
@@ -167,7 +168,7 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
                         e.stopPropagation();
                         onRemoveItem(item.track.id);
                       }}
-                      title="从历史中移除"
+                      title={t('从历史中移除')}
                       className="p-1.5 rounded-lg text-muted-2 hover:text-accent hover:bg-elevated/60 transition-colors opacity-0 group-hover:opacity-100"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -181,12 +182,12 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
 
         {/* Footer */}
         <div className="px-6 py-3 border-t border-line bg-surface/90 flex items-center justify-between text-[11px] text-muted">
-          <span>点击任意曲目即可直接再次播放</span>
+          <span>{t('点击任意曲目即可直接再次播放')}</span>
           <button
             onClick={onClose}
             className="px-3.5 py-1 bg-surface-2 hover:bg-elevated text-ink-2 rounded-lg transition-colors text-xs"
           >
-            关闭
+            {t('关闭')}
           </button>
         </div>
       </div>

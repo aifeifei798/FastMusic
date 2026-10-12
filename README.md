@@ -1,5 +1,7 @@
 # FastMusic
 
+**中文** · [English](README.en.md)
+
 ![FastMusic](docs/logo.png)
 
 本地音乐 / MTV 流媒体播放器。**React SPA + Express 媒体后端**,扫描本地音乐目录,通过 HTTP Range 流式播放,自带实时频谱可视化与 10 段均衡器。
@@ -36,6 +38,7 @@
 - **全库缓存任务(系统配置)**: 页头 / 页脚的「系统配置」面板里有四个后台任务 —— 缓存全部歌曲 / MTV 封面、全部歌手封面、全部专辑封面、全部歌曲 / MTV 歌词。任务在服务端后台跑(关闭弹窗继续执行),每 2 秒刷新进度条、命中 / 无结果计数与剩余时间估算;已缓存的条目自动跳过,所以重复点击只是"补齐新增内容"。手动停止后显示「已停止 · 剩余 N 条」,下次再启动从剩余部分继续。
 - **快捷键**: `J`/`K` 上一首/下一首, `S` 收藏, `L` 歌词, `R` 随心电台, `?` 快捷键面板, `Esc` 关闭。
 - **深浅主题**: 页头的 Sun/Moon 按钮切换深色 / 浅色主题,偏好持久化到 `localStorage('fastmusic_theme')`,首次访问跟随系统 `prefers-color-scheme`。所有颜色都是 `src/index.css` 里的语义 token(`app / surface / line / ink / accent / amber / stage / viewport / pill / lyric-ink ...`),`[data-theme="light"]` 覆盖变量即全站换肤,组件里不写 `neutral-` / `rose-` 这类硬编码色。浅色主题是 Apple 风(近黑文字 + 白卡片 + hairline 边框 + 克制 rose),深色主题带 rose/amber 暖调呼应徽标;视频 `<video>` 视口在两个主题都保持深色,只有舞台背景变浅。
+- **界面语言**: 页头的 Globe 按钮切换中文 / English。文案通过 `src/utils/i18n.ts` 的 `t('中文原文', { vars })` 查表(key 就是中文原文),未收录的文案自动保持中文;语言偏好持久化到 `localStorage('fastmusic_lang')`,`index.html` 首屏前设置 `<html lang>`。服务端返回的中文提示(扫描完成 / 错误 detail)也通过 `tServerMessage()` 翻译。
 - **样式**: 全部用 Tailwind utility 类(含 arbitrary variant / arbitrary property),`src/index.css` 只有两个 `@import` + 主题令牌块,没有手写规则。
 
 ## 🚀 快速开始

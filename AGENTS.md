@@ -182,6 +182,10 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   （隐藏时 `cursor-none`，否则 `cursor-pointer`），否则 `cursor-pointer` 会覆盖继承的 none。
   控制栏可见时恢复 `cursor-pointer`（方便点击按钮）。实测（CDP 计算样式）：根容器/视口/wrapper/
   `<video>`/胶囊/歌词列的 computed cursor 都是 `none`。
+- **界面语言（i18n）**: `src/utils/i18n.ts` 导出 `getLang()/setLang()/isEn()/t(key, vars?)`，**key 就是中文原文**（含 `{n}` 占位符），英文在 `EN` 表里查；未收录的 key 原样返回中文，所以新增文案不会崩。语言持久化到 `localStorage('fastmusic_lang')`（默认 `zh`），`index.html` 的内联脚本首屏前写 `<html lang>`。`App.tsx` 有 `lang` state + 页头 Globe 按钮（`handleToggleLang`），切语言后全站重渲染。坑：
+  - 模块级常量（`EQ_PRESETS` 的 label、`CACHE_JOBS` 的 title/hint）在 import 时无法翻译，必须**渲染时** `t(p.label)` / `t(task.title)`。
+  - 服务端返回的中文字符串（`未知艺术家`、`精选集`、`/api/cover` 与 `/api/lyrics` 的 `detail`、`scanResult.message`）走 `t()` 精确匹配；含动态数字的模板用 `tServerMessage()`（先正则匹配模板再填占位符），例如 `扫描完成：新增 N，复用 M，库共 K 条目`。新增服务端文案时同步加 key。
+  - 中文媒体标题/歌手名不是 UI 文案，保持原样。
 - **深浅主题（theme tokens）**: 全站颜色都是 `src/index.css` 里的语义 token —— `@theme` 块定义深色默认值（`app / surface / surface-2 / elevated / line / line-strong / line-soft / ink / ink-2 / ink-3 / muted / muted-2 / faint / accent / accent-soft / accent-dim / amber / amber-dim / emerald / emerald-dim / sky / sky-dim / danger / danger-dim / purple / purple-dim / stage / viewport / vinyl / lyric-ink / pill`），`[data-theme="light"]` 只覆盖变量值，组件类名不变。**新代码不要写 `neutral-950` / `rose-400` 这类硬编码色**（`bg-black/75` 弹窗遮罩、accent 按钮上的 `text-white` 是例外）。主题状态：`localStorage('fastmusic_theme')`（默认跟随 `prefers-color-scheme`），`App.tsx` 的 effect 写 `document.documentElement.dataset.theme`；`index.html` 的内联脚本在首屏前读 localStorage 设置 `data-theme`，避免 FOUC。坑：
   - canvas / JS 里的颜色不走 token：`src/utils/theme.ts` 的 `currentTheme()` + `VISUALIZER_PALETTE`（含 `glowScale`，浅色主题光晕减半）+ `coverGradient()`，`AudioVisualizer` 每帧读一次，切主题后自动变。
   - 视频相关：`bg-viewport`（`<video>` 视口）两个主题都保持深色（浅色主题 `#101014`），只有舞台 `bg-stage` 变浅；压在画面上的歌词文字永远用 `text-lyric-ink`（浅色文字 + 暗底 scrim），音频歌词用 `text-ink` + `var(--lyric-shadow)`。

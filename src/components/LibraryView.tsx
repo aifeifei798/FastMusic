@@ -23,6 +23,7 @@ import { MediaItem, ArtistSummary, AlbumSummary, TranscodeInfo, TranscodeSummary
 import { mediaApi } from '../services/api';
 import { SCROLLBAR_CLASSES, NO_SCROLLBAR_CLASSES } from '../utils/ui';
 import { currentTheme, coverGradient as themeCoverGradient } from '../utils/theme';
+import { t } from '../utils/i18n';
 
 // 标签上的数字缩写：33878 → 33.9k，让工具栏在窄屏也能一行装下
 const fmtNum = (n: number): string => (n >= 10000 ? `${(n / 1000).toFixed(1)}k` : String(n));
@@ -173,7 +174,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     const covers = await mediaApi.prefetchCovers(ids);
     setCoverById((prev) => ({ ...prev, ...covers }));
     const resolved = Object.values(covers).filter(Boolean).length;
-    setCoverPrefetchInfo(`封面预取完成：命中 ${resolved} / ${ids.length}`);
+    setCoverPrefetchInfo(t('封面预取完成：命中 {hits} / {total}', { hits: resolved, total: ids.length }));
     setCoverPrefetching(false);
   };
 
@@ -190,7 +191,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     const res = await mediaApi.prefetchLyrics(ids);
     // 服务端缓存已写入，同步列表行的歌词 badge（否则要下次加载才更新）
     if (onLyricStatus) onLyricStatus(res.lyrics);
-    setLyricPrefetchInfo(`歌词预取完成：命中 ${res.resolved} / ${res.requested}`);
+    setLyricPrefetchInfo(t('歌词预取完成：命中 {hits} / {total}', { hits: res.resolved, total: res.requested }));
     setLyricPrefetching(false);
   };
 
@@ -245,7 +246,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     if (info.status === 'ready') {
       return (
         <span
-          title={`已转码为 ${info.container || 'webm'} sidecar${sidecar ? ` (${sidecar})` : ''}`}
+          title={t('已转码为 {container} sidecar', { container: info.container || 'webm' }) + (sidecar ? ` (${sidecar})` : '')}
           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-dim/25 text-emerald border border-emerald-dim/40"
         >
           <CheckCircle2 className="w-3 h-3" />
@@ -256,43 +257,43 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     if (info.status === 'running') {
       return (
         <span
-          title="正在 remux/转码，完成后自动可播"
+          title={t('正在 remux/转码，完成后自动可播')}
           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-dim/25 text-amber border border-amber-dim/40"
         >
           <Loader2 className="w-3 h-3 animate-spin" />
-          <span>{info.progress > 0 ? `转码 ${info.progress}%` : '转码中'}</span>
+          <span>{info.progress > 0 ? t('转码 {progress}%', { progress: info.progress }) : t('转码中')}</span>
         </span>
       );
     }
     if (info.status === 'queued') {
       return (
         <span
-          title="排队等待转码（后台队列按文件从小到大处理）"
+          title={t('排队等待转码（后台队列按文件从小到大处理）')}
           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-2 text-muted border border-line-strong/50"
         >
           <Clock className="w-3 h-3" />
-          <span>排队</span>
+          <span>{t('排队')}</span>
         </span>
       );
     }
     if (info.status === 'error') {
       return (
         <span
-          title={info.progress === 0 ? '转码失败' : '转码失败'}
+          title={t('转码失败')}
           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent-dim/25 text-accent-soft border border-accent-dim/40"
         >
           <AlertTriangle className="w-3 h-3" />
-          <span>转码失败</span>
+          <span>{t('转码失败')}</span>
         </span>
       );
     }
     return (
       <span
-        title="未入转码队列（PRETRANCODE_MKV=0 或新扫描的文件）"
+        title={t('未入转码队列（PRETRANCODE_MKV=0 或新扫描的文件）')}
         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-2/60 text-muted-2 border border-dashed border-line-strong/60"
       >
         <Clock className="w-3 h-3" />
-        <span>待转码</span>
+        <span>{t('待转码')}</span>
       </span>
     );
   };
@@ -350,11 +351,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       .filter((id): id is string => !!id && !entityCoverRequestedRef.current.has(id) && !(id in coverById));
     if (ids.length === 0) return;
     ids.forEach((id) => entityCoverRequestedRef.current.add(id));
-    setEntityCoverInfo(`补全封面 ${ids.length} 张…`);
+    setEntityCoverInfo(t('补全封面 {total} 张…', { total: ids.length }));
     mediaApi.prefetchCovers(ids).then((covers) => {
       setCoverById((prev) => ({ ...prev, ...covers }));
       const resolved = Object.values(covers).filter(Boolean).length;
-      setEntityCoverInfo(`封面补全：命中 ${resolved} / ${ids.length}`);
+      setEntityCoverInfo(t('封面补全：命中 {hits} / {total}', { hits: resolved, total: ids.length }));
     });
   }, [activeTab, artistLimit, albumLimit, filteredArtists, filteredAlbums, coverById]);
 
@@ -386,7 +387,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 : 'text-muted hover:text-ink-2'
             }`}
           >
-            曲目 {fmtNum(tracks.length)}/{fmtNum(totalTracks)}
+            {t('曲目 {loaded}/{total}', { loaded: fmtNum(tracks.length), total: fmtNum(totalTracks) })}
           </button>
           <button
             onClick={() => setActiveTab('artists')}
@@ -396,7 +397,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 : 'text-muted hover:text-ink-2'
             }`}
           >
-            歌手 {fmtNum(artists.length)}
+            {t('歌手 {n}', { n: fmtNum(artists.length) })}
           </button>
           <button
             onClick={() => setActiveTab('albums')}
@@ -406,7 +407,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 : 'text-muted hover:text-ink-2'
             }`}
           >
-            专辑 {fmtNum(albums.length)}
+            {t('专辑 {n}', { n: fmtNum(albums.length) })}
           </button>
           <button
             onClick={() => setActiveTab('favorites')}
@@ -417,7 +418,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             }`}
           >
             <Heart className={`w-3.5 h-3.5 ${favorites.length > 0 ? 'fill-accent text-accent' : 'text-muted'}`} />
-            <span>收藏 {fmtNum(favorites.length)}</span>
+            <span>{t('收藏 {n}', { n: fmtNum(favorites.length) })}</span>
           </button>
         </div>
 
@@ -428,7 +429,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-2" />
             <input
               type="text"
-              placeholder="搜索曲目、歌手或专辑..."
+              placeholder={t('搜索曲目、歌手或专辑...')}
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               className="w-full pl-9 pr-8 py-2 rounded-xl bg-surface border border-line text-sm text-ink-2 placeholder-muted-2 focus:outline-none focus:border-accent/80 transition-colors"
@@ -445,7 +446,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
           {/* 搜索命中数: 防抖后服务端返回的总数 */}
           {searchQuery && (
-            <span className="text-[11px] font-mono text-muted-2 shrink-0">命中 {totalTracks}</span>
+            <span className="text-[11px] font-mono text-muted-2 shrink-0">{t('命中 {n}', { n: totalTracks })}</span>
           )}
 
           {/* Media Type Toggle */}
@@ -458,7 +459,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   : 'text-muted hover:text-ink'
               }`}
             >
-              全部
+              {t('全部')}
             </button>
             <button
               onClick={() => onFilterMediaType('video')}
@@ -480,7 +481,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               }`}
             >
               <Music className="w-3 h-3" />
-              音乐
+              {t('音乐')}
             </button>
           </div>
 
@@ -489,7 +490,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           <div ref={toolMenuRef} className="relative shrink-0">
             <button
               onClick={() => setToolMenuOpen((v) => !v)}
-              title="筛选与工具：只看已转码 / 只看有歌词 / 预取封面 / 预取歌词 / 行密度"
+              title={t('筛选与工具：只看已转码 / 只看有歌词 / 预取封面 / 预取歌词 / 行密度')}
               className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
                 toolMenuOpen
                   ? 'bg-surface-2 text-ink border-line-strong'
@@ -497,14 +498,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               }`}
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>筛选与工具</span>
+              <span>{t('筛选与工具')}</span>
               {(readyOnly || hasLyricsOnly) && (
                 <span className="flex items-center gap-1">
                   {readyOnly && (
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-dim/70 text-emerald text-[10px]">已转码</span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-dim/70 text-emerald text-[10px]">{t('已转码')}</span>
                   )}
                   {hasLyricsOnly && (
-                    <span className="px-1.5 py-0.5 rounded bg-sky-dim/70 text-sky text-[10px]">有歌词</span>
+                    <span className="px-1.5 py-0.5 rounded bg-sky-dim/70 text-sky text-[10px]">{t('有歌词')}</span>
                   )}
                 </span>
               )}
@@ -517,7 +518,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   {onToggleReadyOnly && (
                     <button
                       onClick={onToggleReadyOnly}
-                      title="只显示已转码(或无需转码)的曲目；排队中和转码中的 .mkv 会被隐藏"
+                      title={t('只显示已转码(或无需转码)的曲目；排队中和转码中的 .mkv 会被隐藏')}
                       className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
                         readyOnly
                           ? 'bg-emerald-dim/70 text-emerald border-emerald-dim/60'
@@ -525,13 +526,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       }`}
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>只看已转码</span>
+                      <span>{t('只看已转码')}</span>
                     </button>
                   )}
                   {onToggleHasLyrics && (
                     <button
                       onClick={onToggleHasLyrics}
-                      title="只显示网易云有歌词的曲目（筛选只读服务端歌词缓存，先预取覆盖率更高）"
+                      title={t('只显示网易云有歌词的曲目（筛选只读服务端歌词缓存，先预取覆盖率更高）')}
                       className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
                         hasLyricsOnly
                           ? 'bg-sky-dim/70 text-sky border-sky-dim/60'
@@ -539,7 +540,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         }`}
                     >
                       <Captions className="w-3.5 h-3.5" />
-                      <span>只看有歌词</span>
+                      <span>{t('只看有歌词')}</span>
                     </button>
                   )}
                 </div>
@@ -549,30 +550,30 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     <select
                       value={sort}
                       onChange={(e) => onSortChange(e.target.value as TrackSort)}
-                      title="列表排序（服务端 /api/tracks 的 sort 参数，默认 = 扫描索引顺序）"
+                      title={t('列表排序（服务端 /api/tracks 的 sort 参数，默认 = 扫描索引顺序）')}
                       className="px-2.5 py-1.5 text-xs rounded-lg bg-surface border border-line text-ink-3 hover:text-ink cursor-pointer"
                     >
-                      <option value="default">默认顺序</option>
-                      <option value="title">标题 A→Z</option>
-                      <option value="artist">歌手 A→Z</option>
-                      <option value="album">专辑 A→Z</option>
-                      <option value="duration">时长</option>
-                      <option value="size">文件大小</option>
-                      <option value="mtime">文件日期</option>
-                      <option value="random">随机</option>
+                      <option value="default">{t('默认顺序')}</option>
+                      <option value="title">{t('标题 A→Z')}</option>
+                      <option value="artist">{t('歌手 A→Z')}</option>
+                      <option value="album">{t('专辑 A→Z')}</option>
+                      <option value="duration">{t('时长')}</option>
+                      <option value="size">{t('文件大小')}</option>
+                      <option value="mtime">{t('文件日期')}</option>
+                      <option value="random">{t('随机')}</option>
                     </select>
                   )}
                   {onToggleDensity && (
                     <button
                       onClick={onToggleDensity}
-                      title={rowDensity === 'compact' ? '当前紧凑模式，点击恢复标准行高' : '当前标准模式，点击切换紧凑行高（紧凑隐藏专辑列，每屏多几行）'}
+                      title={rowDensity === 'compact' ? t('当前紧凑模式，点击恢复标准行高') : t('当前标准模式，点击切换紧凑行高（紧凑隐藏专辑列，每屏多几行）')}
                       className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
                         rowDensity === 'compact'
                           ? 'bg-surface-2 text-ink border-line-strong'
                           : 'bg-surface text-muted border-line hover:text-ink'
                       }`}
                     >
-                      {rowDensity === 'compact' ? '紧凑行高' : '标准行高'}
+                      {rowDensity === 'compact' ? t('紧凑行高') : t('标准行高')}
                     </button>
                   )}
                 </div>
@@ -580,7 +581,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <button
                     onClick={handlePrefetchCovers}
-                    title="为当前列表条目获取封面（每次最多 200 条）：优先本地内嵌封面，其次 iTunes / 网易云"
+                    title={t('为当前列表条目获取封面（每次最多 200 条）：优先本地内嵌封面，其次 iTunes / 网易云')}
                     className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
                       coverPrefetching
                         ? 'bg-accent-dim/70 text-accent-soft border-accent-dim/60'
@@ -588,11 +589,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     }`}
                   >
                     {coverPrefetching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Disc className="w-3.5 h-3.5" />}
-                    <span>{coverPrefetching ? '获取封面…' : '预取封面'}</span>
+                    <span>{coverPrefetching ? t('获取封面…') : t('预取封面')}</span>
                   </button>
                   <button
                     onClick={handlePrefetchLyrics}
-                    title="为当前列表条目获取歌词（网易云，每次最多 200 条），缓存到 fastmusic_lyrics.json；「只看有歌词」也依赖这份缓存"
+                    title={t('为当前列表条目获取歌词（网易云，每次最多 200 条），缓存到 fastmusic_lyrics.json；「只看有歌词」也依赖这份缓存')}
                     className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
                       lyricPrefetching
                         ? 'bg-sky-dim/70 text-sky border-sky-dim/60'
@@ -600,7 +601,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     }`}
                   >
                     {lyricPrefetching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Captions className="w-3.5 h-3.5" />}
-                    <span>{lyricPrefetching ? '获取歌词…' : '预取歌词'}</span>
+                    <span>{lyricPrefetching ? t('获取歌词…') : t('预取歌词')}</span>
                   </button>
                 </div>
                 {(coverPrefetchInfo || lyricPrefetchInfo) && (
@@ -618,7 +619,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           {/* .mkv 换容器(remux)进度统计：已就绪 / 进行中 / 排队 */}
           {transcodeSummary && transcodeSummary.total_mkv > 0 && (
             <div
-              title={`全库 ${transcodeSummary.total_mkv} 个 .mkv：已转码 ${transcodeSummary.ready}，转码中 ${transcodeSummary.running}，排队 ${transcodeSummary.queued}${transcodeSummary.pending ? `，未入队 ${transcodeSummary.pending}` : ''}${transcodeSummary.error ? `，失败 ${transcodeSummary.error}` : ''}`}
+              title={t('全库 {total} 个 .mkv：已转码 {ready}，转码中 {running}，排队 {queued}', { total: transcodeSummary.total_mkv, ready: transcodeSummary.ready, running: transcodeSummary.running, queued: transcodeSummary.queued }) + (transcodeSummary.pending ? t('，未入队 {n}', { n: transcodeSummary.pending }) : '') + (transcodeSummary.error ? t('，失败 {n}', { n: transcodeSummary.error }) : '')}
               className="flex items-center gap-2 shrink-0 text-[11px] font-medium text-muted"
             >
               <span className="flex items-center gap-1 text-emerald">
@@ -645,7 +646,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       {/* A-Z Alphabet quick navigation for Artists / Albums */}
       {(activeTab === 'artists' || activeTab === 'albums') && (
         <div className={`flex items-center gap-1 overflow-x-auto py-1 px-2 bg-surface/40 rounded-xl border border-line/80 ${NO_SCROLLBAR_CLASSES}`}>
-          <span className="text-[11px] text-muted-2 px-1 font-mono">字母索引:</span>
+          <span className="text-[11px] text-muted-2 px-1 font-mono">{t('字母索引:')}</span>
           {alphabet.map((char) => (
             <button
               key={char}
@@ -666,10 +667,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       {(selectedArtist || selectedAlbum) && (
         <div className="flex items-center gap-2 p-2.5 bg-surface/60 rounded-xl border border-line text-xs text-ink-3">
           <SlidersHorizontal className="w-3.5 h-3.5 text-accent" />
-          <span>正在筛选:</span>
+          <span>{t('正在筛选:')}</span>
           {selectedArtist && (
             <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-surface-2 text-ink">
-              歌手: {selectedArtist}
+              {t('歌手: {name}', { name: selectedArtist })}
               <button
                 onClick={() => onFilterArtist(null)}
                 className="hover:text-accent ml-1"
@@ -680,7 +681,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           )}
           {selectedAlbum && (
             <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-surface-2 text-ink">
-              专辑: {selectedAlbum}
+              {t('专辑: {name}', { name: selectedAlbum })}
               <button
                 onClick={() => onFilterAlbum(null)}
                 className="hover:text-accent ml-1"
@@ -696,7 +697,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             }}
             className="text-muted-2 hover:text-ink-3 ml-auto text-xs underline"
           >
-            清除所有筛选
+            {t('清除所有筛选')}
           </button>
         </div>
       )}
@@ -707,15 +708,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           {totalTracks === 0 ? (
             <div className="p-12 text-center text-muted-2 flex flex-col items-center">
               <Music className="w-12 h-12 stroke-1 text-faint mb-3" />
-              <p className="text-base font-medium text-ink-3">暂无匹配的媒体文件</p>
+              <p className="text-base font-medium text-ink-3">{t('暂无匹配的媒体文件')}</p>
               <p className="text-xs text-muted-2 mt-1 max-w-sm">
-                未在当前筛选中找到曲目。您可以重置筛选，或在「系统配置」里添加扫描目录并重新扫描。
+                {t('未在当前筛选中找到曲目。您可以重置筛选，或在「系统配置」里添加扫描目录并重新扫描。')}
               </p>
               <button
                 onClick={onScanClick}
                 className="mt-4 px-4 py-2 bg-accent hover:bg-accent text-white text-xs font-medium rounded-xl transition-colors"
               >
-                打开系统配置 · 扫描目录
+                {t('打开系统配置 · 扫描目录')}
               </button>
             </div>
           ) : (
@@ -726,14 +727,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               {/* Header row with performance indicator — pinned while the rows scroll */}
               <div className={`sticky top-0 z-10 hidden sm:grid grid-cols-12 gap-4 px-5 ${rowDensity === 'compact' ? 'py-2' : 'py-3'} text-[11px] font-semibold text-muted tracking-wider uppercase bg-surface/70 border-b border-line/60`}>
                 <div className="col-span-1 text-center">#</div>
-                <div className="col-span-5">曲目标题 / 艺术家</div>
+                <div className="col-span-5">{t('曲目标题 / 艺术家')}</div>
                 {rowDensity === 'compact' ? (
-                  <div className="col-span-3 text-center">时长</div>
+                  <div className="col-span-3 text-center">{t('时长')}</div>
                 ) : (
-                  <div className="col-span-3">所属专辑</div>
+                  <div className="col-span-3">{t('所属专辑')}</div>
                 )}
-                <div className="col-span-1 text-center">格式</div>
-                <div className="col-span-2 text-right">大小 / 操作</div>
+                <div className="col-span-1 text-center">{t('格式')}</div>
+                <div className="col-span-2 text-right">{t('大小 / 操作')}</div>
               </div>
 
               {/* Rows List */}
@@ -799,7 +800,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             {isFavorited && (
                               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0">
                                 <Heart className="w-2.5 h-2.5 fill-accent text-accent" />
-                                <span>已收藏</span>
+                                <span>{t('已收藏')}</span>
                               </span>
                             )}
                           </div>
@@ -811,7 +812,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               }}
                               className="hover:text-accent hover:underline"
                             >
-                              {track.artist}
+                              {t(track.artist)}
                             </span>
                             {rowDensity === 'comfortable' && formatDuration(track.duration) && (
                               <span aria-hidden="true" className="text-faint">·</span>
@@ -820,7 +821,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               <span className="font-mono tabular-nums text-muted-2">{formatDuration(track.duration)}</span>
                             )}
                             {track.lyric === 'yes' && (
-                              <span title="有歌词（网易云歌词缓存）" className="shrink-0">
+                              <span title={t('有歌词（网易云歌词缓存）')} className="shrink-0">
                                 <Captions className="w-3 h-3 text-accent" />
                               </span>
                             )}
@@ -842,7 +843,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             }}
                             className="hover:text-ink-2 hover:underline"
                           >
-                            {track.album}
+                            {t(track.album)}
                           </span>
                         </div>
                       )}
@@ -874,7 +875,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               e.stopPropagation();
                               onToggleFavorite(track);
                             }}
-                            title={isFavorited ? '取消收藏' : '添加至收藏'}
+                            title={isFavorited ? t('取消收藏') : t('添加至收藏')}
                             className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                               isFavorited
                                 ? 'text-accent hover:text-accent opacity-100'
@@ -898,16 +899,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   {isLoadingMore ? (
                     <div className="flex items-center gap-2 text-accent font-medium">
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>正在拉取下一批曲目 (offset={tracks.length})...</span>
+                      <span>{t('正在拉取下一批曲目 (offset={offset})...', { offset: tracks.length })}</span>
                     </div>
                   ) : hasMore ? (
                     <span className="text-muted">
-                      已加载 <strong className="text-ink font-mono">{tracks.length}</strong> / <strong className="text-accent font-mono">{totalTracks}</strong> 首 · 向下滚动自动追加
+                      {t('已加载')} <strong className="text-ink font-mono">{tracks.length}</strong> / <strong className="text-accent font-mono">{totalTracks}</strong> {t('首 · 向下滚动自动追加')}
                     </span>
                   ) : (
                     <div className="flex items-center gap-1.5 text-muted">
                       <CheckCircle2 className="w-4 h-4 text-emerald" />
-                      <span>已加载全部 <strong className="text-ink-2 font-mono">{totalTracks}</strong> 首</span>
+                      <span>{t('已加载全部')} <strong className="text-ink-2 font-mono">{totalTracks}</strong> {t('首')}</span>
                     </div>
                   )}
                 </div>
@@ -916,11 +917,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     const el = scrollBoxRef.current;
                     if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  title="回到列表顶部"
+                  title={t('回到列表顶部')}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink transition-colors shrink-0 cursor-pointer"
                 >
                   <ArrowDownCircle className="w-3.5 h-3.5 rotate-180" />
-                  <span>回到顶部</span>
+                  <span>{t('回到顶部')}</span>
                 </button>
               </div>
             </>
@@ -933,8 +934,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         <div className="flex flex-col gap-3 flex-1 min-h-0">
           <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-muted">
             <span>
-              共收录 <strong className="text-ink">{filteredArtists.length}</strong> 位艺术家 / UP主
-              <span className="ml-2 font-mono text-muted-2">· 已渲染 {Math.min(artistLimit, filteredArtists.length)}</span>
+              {t('共收录')} <strong className="text-ink">{filteredArtists.length}</strong> {t('位艺术家 / UP主')}
+              <span className="ml-2 font-mono text-muted-2">· {t('已渲染 {n}', { n: Math.min(artistLimit, filteredArtists.length) })}</span>
               {entityCoverInfo && <span className="ml-2 text-muted-2">{entityCoverInfo}</span>}
             </span>
             <select
@@ -942,8 +943,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               onChange={(e) => setEntitySort(e.target.value as 'name' | 'count')}
               className="px-2 py-1 rounded-lg bg-surface border border-line text-xs text-ink-3 cursor-pointer"
             >
-              <option value="name">按名称</option>
-              <option value="count">按作品数</option>
+              <option value="name">{t('按名称')}</option>
+              <option value="count">{t('按作品数')}</option>
             </select>
           </div>
           <div
@@ -954,7 +955,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {filteredArtists.slice(0, artistLimit).map((artist) => (
                 <div
-                  key={artist.artist_name}
+                  key={t(artist.artist_name)}
                   onClick={() => {
                     onFilterArtist(artist.artist_name);
                     setActiveTab('tracks');
@@ -965,7 +966,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     {entityCover(artist) ? (
                       <img
                         src={entityCover(artist)}
-                        alt={artist.artist_name}
+                        alt={t(artist.artist_name)}
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       />
@@ -974,10 +975,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     )}
                   </div>
                   <h4 className="font-semibold text-sm text-ink group-hover:text-accent truncate w-full">
-                    {artist.artist_name}
+                    {t(artist.artist_name)}
                   </h4>
                   <p className="text-xs text-muted mt-1">
-                    {artist.album_count} 张专辑 · {artist.track_count} 首作品
+                    {t('{albums} 张专辑 · {tracks} 首作品', { albums: artist.album_count, tracks: artist.track_count })}
                   </p>
                 </div>
               ))}
@@ -988,7 +989,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   onClick={() => setArtistLimit((n) => n + 120)}
                   className="px-3 py-1.5 rounded-lg bg-surface border border-line text-xs text-ink-3 hover:text-ink hover:border-accent/50 transition-colors cursor-pointer"
                 >
-                  加载更多 ({filteredArtists.length - artistLimit})
+                  {t('加载更多 ({n})', { n: filteredArtists.length - artistLimit })}
                 </button>
               </div>
             )}
@@ -1001,8 +1002,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         <div className="flex flex-col gap-3 flex-1 min-h-0">
           <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-muted">
             <span>
-              共收录 <strong className="text-ink">{filteredAlbums.length}</strong> 张专辑
-              <span className="ml-2 font-mono text-muted-2">· 已渲染 {Math.min(albumLimit, filteredAlbums.length)}</span>
+              {t('共收录')} <strong className="text-ink">{filteredAlbums.length}</strong> {t('张专辑')}
+              <span className="ml-2 font-mono text-muted-2">· {t('已渲染 {n}', { n: Math.min(albumLimit, filteredAlbums.length) })}</span>
               {entityCoverInfo && <span className="ml-2 text-muted-2">{entityCoverInfo}</span>}
             </span>
             <select
@@ -1010,8 +1011,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               onChange={(e) => setEntitySort(e.target.value as 'name' | 'count')}
               className="px-2 py-1 rounded-lg bg-surface border border-line text-xs text-ink-3 cursor-pointer"
             >
-              <option value="name">按名称</option>
-              <option value="count">按曲目数</option>
+              <option value="name">{t('按名称')}</option>
+              <option value="count">{t('按曲目数')}</option>
             </select>
           </div>
           <div
@@ -1022,7 +1023,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {filteredAlbums.slice(0, albumLimit).map((album) => (
                 <div
-                  key={`${album.artist_name}-${album.album_name}`}
+                  key={`${t(album.artist_name)}-${t(album.album_name)}`}
                   onClick={() => {
                     onFilterAlbum(album.album_name);
                     setActiveTab('tracks');
@@ -1033,7 +1034,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     {entityCover(album) ? (
                       <img
                         src={entityCover(album)}
-                        alt={album.album_name}
+                        alt={t(album.album_name)}
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       />
@@ -1042,13 +1043,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     )}
                   </div>
                   <h4 className="font-semibold text-xs text-ink group-hover:text-accent truncate">
-                    {album.album_name}
+                    {t(album.album_name)}
                   </h4>
                   <p className="text-[11px] text-muted truncate mt-0.5">
-                    {album.artist_name}
+                    {t(album.artist_name)}
                   </p>
                   <p className="text-[10px] text-muted-2 mt-1 font-mono">
-                    {album.track_count} 首曲目
+                    {t('{n} 首曲目', { n: album.track_count })}
                   </p>
                 </div>
               ))}
@@ -1059,7 +1060,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   onClick={() => setAlbumLimit((n) => n + 120)}
                   className="px-3 py-1.5 rounded-lg bg-surface border border-line text-xs text-ink-3 hover:text-ink hover:border-accent/50 transition-colors cursor-pointer"
                 >
-                  加载更多 ({filteredAlbums.length - albumLimit})
+                  {t('加载更多 ({n})', { n: filteredAlbums.length - albumLimit })}
                 </button>
               </div>
             )}
@@ -1075,15 +1076,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <div className="w-16 h-16 rounded-full bg-accent-dim/30 border border-accent-dim/40 flex items-center justify-center text-accent mb-3 shadow-inner">
                 <Heart className="w-8 h-8" />
               </div>
-              <p className="text-base font-medium text-ink-2">暂无收藏的曲目</p>
+              <p className="text-base font-medium text-ink-2">{t('暂无收藏的曲目')}</p>
               <p className="text-xs text-muted mt-1.5 max-w-sm leading-relaxed">
-                在播放卡片区域或曲目列表中点击心形爱心 (Heart) 按钮，即可将喜爱的无损音乐与高清 MTV 保存到此处。
+                {t('在播放卡片区域或曲目列表中点击心形爱心 (Heart) 按钮，即可将喜爱的无损音乐与高清 MTV 保存到此处。')}
               </p>
               <button
                 onClick={() => setActiveTab('tracks')}
                 className="mt-5 px-4 py-2 bg-accent hover:bg-accent text-white text-xs font-medium rounded-xl transition-colors cursor-pointer shadow-md"
               >
-                浏览全部曲目
+                {t('浏览全部曲目')}
               </button>
             </div>
           ) : (
@@ -1091,10 +1092,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               {/* Header row */}
               <div className="hidden sm:grid grid-cols-12 gap-4 px-5 py-3 text-[11px] font-semibold text-muted tracking-wider uppercase bg-surface/70 border-b border-line/60">
                 <div className="col-span-1 text-center">#</div>
-                <div className="col-span-5">曲目标题 / 艺术家</div>
-                <div className="col-span-3">所属专辑</div>
-                <div className="col-span-1 text-center">格式</div>
-                <div className="col-span-2 text-right">大小 / 操作</div>
+                <div className="col-span-5">{t('曲目标题 / 艺术家')}</div>
+                <div className="col-span-3">{t('所属专辑')}</div>
+                <div className="col-span-1 text-center">{t('格式')}</div>
+                <div className="col-span-2 text-right">{t('大小 / 操作')}</div>
               </div>
 
               {/* Rows List — 高度由 main 的剩余空间决定（有下限，避免行被压扁），页脚始终可见 */}
@@ -1156,7 +1157,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             </div>
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0">
                               <Heart className="w-2.5 h-2.5 fill-accent text-accent" />
-                              <span>已收藏</span>
+                              <span>{t('已收藏')}</span>
                             </span>
                           </div>
                           <div className="text-[11px] text-muted truncate flex items-center gap-1.5 mt-0.5">
@@ -1168,7 +1169,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               }}
                               className="hover:text-accent hover:underline"
                             >
-                              {track.artist}
+                              {t(track.artist)}
                             </span>
                           </div>
                         </div>
@@ -1184,7 +1185,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           }}
                           className="hover:text-ink-2 hover:underline"
                         >
-                          {track.album}
+                          {t(track.album)}
                         </span>
                       </div>
 
@@ -1215,7 +1216,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               e.stopPropagation();
                               onToggleFavorite(track);
                             }}
-                            title="取消收藏"
+                            title={t('取消收藏')}
                             className="p-1.5 rounded-lg text-accent hover:text-accent transition-colors cursor-pointer"
                           >
                             <Heart className="w-4 h-4 fill-accent text-accent" />
@@ -1230,7 +1231,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
               {/* Footer info */}
               <div className="p-3 bg-surface/70 border-t border-line/60 text-center text-xs text-muted">
-                已在本地收藏 <strong className="text-accent font-mono">{favorites.length}</strong> 首曲目 (存储于 localStorage 'favorites')
+                {t('已在本地收藏')} <strong className="text-accent font-mono">{favorites.length}</strong> {t("首曲目 (存储于 localStorage 'favorites')")}
               </div>
             </>
           )}

@@ -22,6 +22,11 @@
           ? saved
           : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
         document.documentElement.dataset.theme = theme;
+
+        // 语言同理: 首屏前把 <html lang> 设成已保存的界面语言
+        var lang = null;
+        try { lang = localStorage.getItem('fastmusic_lang'); } catch (e) {}
+        document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
       })();
     </script>
   </head>
