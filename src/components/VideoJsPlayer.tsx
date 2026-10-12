@@ -983,9 +983,13 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       // video.js 主题覆盖用 arbitrary variant 写(后代选择器), 不再手写 CSS 规则。
       // 注意: video.js 会在运行时注入 <style class="vjs-styles-defaults">(.video-js{width:300px;height:150px}),
       // 它不在任何 @layer 里, 优先级高于 Tailwind 的 utilities layer, 所以这些覆盖必须加 ! 后缀。
+      // 全屏沉浸: 控制栏隐藏时鼠标指针也消失。cursor 必须挂在全屏根容器上(而不是 Media Viewport div),
+      // 因为舞台 overlay(absolute inset-0 z-[15])、控制胶囊、歌词列都是根容器的直接子元素,
+      // 浏览器按指针下方最上层元素解析 cursor, 只给视口 div 加 cursor-none 时这些区域仍显示指针。
+      // cursor 是继承属性, 根容器设 cursor-none 后 video.js 的 wrapper/<video> 也继承。
       className={`relative w-full bg-neutral-950 flex flex-col justify-between overflow-hidden transition-all duration-300 [&_.vjs-custom-theme]:font-[inherit]! [&_.vjs-custom-theme]:bg-transparent! [&_.vjs-custom-theme]:w-full! [&_.vjs-custom-theme]:h-full! [&_.vjs-custom-theme_.vjs-tech]:object-contain! [&_.video-js:focus]:outline-none! ${
         isFullscreen ? 'h-screen w-screen' : isTheaterMode ? 'h-[clamp(300px,calc(100vh-300px),580px)] rounded-2xl border border-neutral-800 shadow-2xl' : 'h-[clamp(240px,calc(100vh-420px),440px)] rounded-2xl border border-neutral-800/80 shadow-xl'
-      }`}
+      } ${isFullscreen && isVideo && !showControls ? 'cursor-none' : ''}`}
     >
       {/* Top Overlay Badge & Header Info */}
       <div
@@ -1143,8 +1147,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
       {/* Main Media Viewport */}
       <div 
-        // 全屏沉浸: 控制栏隐藏时指针也消失。video.js 的 wrapper/<video> 继承这里的 cursor,
-        // 所以直接切换这个容器的 utility 即可(不需要 .cursor-none 后代覆盖规则)。
+        // 与根容器保持一致: 控制栏隐藏时视口也 cursor-none(否则 cursor-pointer 会覆盖继承的 none)。
         className={`relative flex-1 w-full h-full flex items-center justify-center bg-black overflow-hidden ${
           isFullscreen && isVideo && !showControls ? 'cursor-none' : 'cursor-pointer'
         }`}

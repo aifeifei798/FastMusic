@@ -173,9 +173,15 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   画面下方的"大黑边"。均衡器面板因此锚定在 `bottom-[104px]`（胶囊高约 84px + bottom-3）并加
   `max-h-[calc(100%-112px)] overflow-y-auto`，slider 高度 `h-24`，否则短舞台（~335px）里面板会被裁掉。
 - **全屏沉浸隐藏鼠标指针**: 控制栏自动隐藏（播放中 3.5s 无鼠标移动 / 鼠标离开播放区）后，
-  全屏视频时播放视口 div 的条件 utility 类切成 `cursor-none`（`VideoJsPlayer.tsx`），
-  video.js 的 wrapper/`<video>` 继承该值，所以不再需要 `.cursor-none` 的后代覆盖规则。
-  控制栏可见时恢复 `cursor-pointer`（方便点击按钮）。
+  全屏视频时 `cursor-none` 挂在**全屏根容器**（`VideoJsPlayer.tsx` 的 `containerRef` div，
+  条件 `isFullscreen && isVideo && !showControls`）而不是只挂播放视口 div：舞台 overlay
+  （`absolute inset-0 z-[15] pointer-events-none`）、控制胶囊、歌词列都是根容器的直接子元素，
+  浏览器按指针下方最上层元素解析 cursor，只给视口 div 加 `cursor-none` 时这些区域仍显示指针
+  （这就是"控制栏隐藏后鼠标没隐藏"的原因）。`cursor` 是继承属性，根容器设 none 后视口 div、
+  video.js wrapper/`<video>`、overlay、胶囊、歌词列全部继承。视口 div 仍保留条件类
+  （隐藏时 `cursor-none`，否则 `cursor-pointer`），否则 `cursor-pointer` 会覆盖继承的 none。
+  控制栏可见时恢复 `cursor-pointer`（方便点击按钮）。实测（CDP 计算样式）：根容器/视口/wrapper/
+  `<video>`/胶囊/歌词列的 computed cursor 都是 `none`。
 - **样式全部用 Tailwind utility 类**: `src/index.css` 只有两个 `@import`（tailwindcss + video.js 官方 CSS），
   没有手写规则。滚动条用 arbitrary variant 挂在每个滚动容器上（共享常量 `SCROLLBAR_CLASSES` /
   `NO_SCROLLBAR_CLASSES` 在 `src/utils/ui.ts`，因为 `::-webkit-scrollbar` 伪元素不能从祖先继承）。
