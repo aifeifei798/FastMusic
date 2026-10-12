@@ -10,6 +10,26 @@ export interface MediaItem {
   duration?: number;
   cover_url?: string;
   mtime?: number; // 源文件 mtimeMs，用于 stream URL 版本参数
+  transcode?: TranscodeInfo; // .mkv 的转码状态（服务端在 /api/tracks 响应里附带）
+}
+
+// .mkv 换容器(remux)状态：服务端 sidecar 引擎的只读快照。
+// ready = sidecar 已就绪(容器 webm/mp4)，running = 正在 remux/转码，
+// queued = 排队中，pending = 未入队(PRETRANCODE_MKV=0)，error = 失败。
+export interface TranscodeInfo {
+  status: 'ready' | 'running' | 'queued' | 'pending' | 'error';
+  progress: number;      // 0-100，仅 running 时有意义
+  container?: string;    // ready 时产物容器: webm | mp4
+  out_size?: number;     // sidecar 字节数
+}
+
+export interface TranscodeSummary {
+  total_mkv: number;
+  ready: number;
+  running: number;
+  queued: number;
+  pending: number;
+  error: number;
 }
 
 export interface AlbumSummary {
@@ -29,8 +49,8 @@ export interface ArtistSummary {
 export type PlayMode = 'sequence' | 'loop-all' | 'loop-one' | 'shuffle';
 
 // MKV 转码状态（服务端 /api/transcode/:id 返回）。
-// .mkv 无法直接被 Chrome demux，且本机 Chrome 跳过 VA-API 硬解导致
-// MP4/H.264 黑屏有声，故统一经 ffmpeg 转成 WebM(VP9+Opus) 再流式播放。
+// .mkv 没有 Chrome demuxer，服务端用 sidecar 换容器：AV1/VP9 → .mkv.webm，
+// H.264 → .mkv.mp4（都是 -c copy 无损 remux），探测失败才 VP9+Opus 重编码。
 export interface TranscodeStatus {
   status: 'queued' | 'running' | 'done' | 'error';
   progress: number;         // 0-100；分母取源时长（探测不到时保持 0）

@@ -41,6 +41,7 @@ export interface ServerMediaItem {
   cover_url?: string;
   abs_path?: string;
   mtime?: number; // 文件 mtimeMs，用于增量去重（已入库且未变更则 skip 重解析）
+  transcode?: TranscodeInfo; // 仅响应里附带（不落库），列表显示转码状态
 }
 
 // In-Memory Database Map: key is media_id
@@ -101,6 +102,7 @@ interface TranscodeJob {
   error?: string;
   startedAt?: number;
   finishedAt?: number;
+  retries?: number; // 瞬时失败自动重试次数
   waiters: Array<() => void>;
 }
 
@@ -131,6 +133,54 @@ function findFreshSidecar(srcPath: string, srcMtime: number): string | undefined
     } catch { /* 不存在 */ }
   }
   return undefined;
+}
+
+// 列表用的转码状态（只读，不触发转码）。
+// ready=sidecar 已就绪, running=remux/转码中, queued=排队中, pending=未入队(禁用预转码), error=失败
+interface TranscodeInfo {
+  status: 'ready' | 'running' | 'queued' | 'pending' | 'error';
+  progress: number;
+  container?: string; // ready 时产物容器：webm / mp4
+  out_size?: number;  // sidecar 大小
+}
+
+function transcodeInfo(item: ServerMediaItem): TranscodeInfo | undefined {
+  if (item.ext !== '.mkv' || !item.abs_path) return undefined;
+  const job = transcodeJobs.get(item.abs_path);
+  if (job && job.status !== 'done') {
+    return { status: job.status, progress: job.progress };
+  }
+  // done（或队列里没有 job）→ 看 sidecar 是否已存在且不比源文件旧
+  const outPath = (job && job.outPath) || findFreshSidecar(item.abs_path, item.mtime ?? 0);
+  if (outPath) {
+    let outSize = 0;
+    try { outSize = fs.statSync(outPath).size; } catch {}
+    return { status: 'ready', progress: 100, container: path.extname(outPath).slice(1), out_size: outSize };
+  }
+  return { status: 'pending', progress: 0 };
+}
+
+// 全库 .mkv 转码进度汇总（列表顶部的小统计条）
+function transcodeSummary() {
+  let total = 0, ready = 0, running = 0, queued = 0, pending = 0, error = 0;
+  for (const item of MEDIA_DB.values()) {
+    if (item.ext !== '.mkv' || !item.abs_path) continue;
+    total++;
+    const info = transcodeInfo(item);
+    if (!info) continue;
+    if (info.status === 'ready') ready++;
+    else if (info.status === 'running') running++;
+    else if (info.status === 'queued') queued++;
+    else if (info.status === 'pending') pending++;
+    else error++;
+  }
+  return { total_mkv: total, ready, running, queued, pending, error };
+}
+
+// /api/tracks 的响应里附带转码状态，前端列表直接显示"已转码/转码中/排队"
+function decorateItem(item: ServerMediaItem): ServerMediaItem {
+  const info = transcodeInfo(item);
+  return info ? { ...item, transcode: info } : item;
 }
 
 // Chrome 的 libwebm demuxer 能解 AV1/VP9（实测本机 headless+真实 Chrome 都出画面，
@@ -203,6 +253,24 @@ function buildFfmpegArgs(
   ];
 }
 
+// 失败处理：瞬时失败（进程被杀 / tmp 被删 / 磁盘抖动）自动重试最多 2 次，
+// 避免列表永久显示"转码失败"；连续失败才标记 error。
+function markTranscodeError(job: TranscodeJob, msg: string): void {
+  job.error = msg;
+  job.retries = (job.retries || 0) + 1;
+  if (job.retries <= 2) {
+    job.status = 'queued';
+    job.progress = 0;
+    transcodeQueue.push(job.srcPath);
+    console.warn(`[Transcode] retry ${job.retries} ${path.basename(job.srcPath)}: ${msg}`);
+  } else {
+    job.status = 'error';
+    console.error(`[Transcode] FAILED ${path.basename(job.srcPath)}: ${msg}`);
+  }
+  notifyWaiters(job);
+  pumpTranscodeQueue();
+}
+
 function startTranscode(job: TranscodeJob): void {
   transcodeRunning += 1;
   job.status = 'running';
@@ -243,12 +311,9 @@ function startTranscode(job: TranscodeJob): void {
     });
 
     proc.on('error', (err: Error) => {
-      job.status = 'error';
-      job.error = `spawn failed: ${err}`;
       try { fs.unlinkSync(job.tmpPath!); } catch {}
       transcodeRunning -= 1;
-      notifyWaiters(job);
-      pumpTranscodeQueue();
+      markTranscodeError(job, `spawn failed: ${err}`);
     });
 
     proc.on('close', (code: number | null) => {
@@ -261,17 +326,13 @@ function startTranscode(job: TranscodeJob): void {
           job.finishedAt = Date.now();
           console.log(`[Transcode] done ${path.basename(job.srcPath)} (${job.finishedAt - (job.startedAt || 0)}ms)`);
         } catch (e: any) {
-          job.status = 'error';
-          job.error = `rename failed: ${e?.message || e}`;
           try { fs.unlinkSync(job.tmpPath!); } catch {}
+          markTranscodeError(job, `rename failed: ${e?.message || e}`);
         }
       } else {
-        job.status = 'error';
-        job.error = `ffmpeg exit ${code}: ${stderrTail.slice(-400)}`;
         try { fs.unlinkSync(job.tmpPath!); } catch {}
-        console.error(`[Transcode] FAILED ${path.basename(job.srcPath)}: ${job.error}`);
+        markTranscodeError(job, `ffmpeg exit ${code}: ${stderrTail.slice(-400)}`);
       }
-      notifyWaiters(job);
       pumpTranscodeQueue();
     });
   });
@@ -943,7 +1004,7 @@ app.get('/api/tracks', (req: Request, res: Response) => {
   if (limitQuery !== undefined || offsetQuery !== undefined) {
     const limit = Math.min(200, Math.max(1, limitQuery || 30));
     const offset = Math.max(0, offsetQuery || 0);
-    const items = results.slice(offset, offset + limit);
+    const items = results.slice(offset, offset + limit).map(decorateItem);
     const has_more = offset + limit < total;
 
     res.json({
@@ -960,7 +1021,7 @@ app.get('/api/tracks', (req: Request, res: Response) => {
   if (page) {
     const total_pages = Math.max(1, Math.ceil(total / page_size));
     const start = (page - 1) * page_size;
-    const items = results.slice(start, start + page_size);
+    const items = results.slice(start, start + page_size).map(decorateItem);
 
     res.json({
       items,
@@ -1026,6 +1087,22 @@ app.get('/api/tracks/:id', (req: Request, res: Response) => {
 // 5.5 转码状态查询：前端据此显示"转码中 x% / 排队 / 失败"
 // 说明：.mkv 走转码引擎（本机 Chrome 跳过 VA-API 硬解 → MP4 黑屏有声，故统一转 WebM）。
 // 已转好的文件走 stream 的常规路径，此接口只报告排队/进度/失败。
+// 6.0a 全库 .mkv 转码进度汇总（列表顶部统计条）
+app.get('/api/transcode/summary', (req: Request, res: Response) => {
+  res.json(transcodeSummary());
+});
+
+// 6.0b 批量查询转码状态（列表轮询，只读，不触发转码）
+app.get('/api/transcode/status', (req: Request, res: Response) => {
+  const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 200);
+  const items: Array<{ id: string; transcode: TranscodeInfo | null }> = [];
+  for (const id of ids) {
+    const item = MEDIA_DB.get(id);
+    items.push({ id, transcode: item ? transcodeInfo(item) ?? null : null });
+  }
+  res.json({ items });
+});
+
 app.get('/api/transcode/:id', (req: Request, res: Response) => {
   const item = MEDIA_DB.get(req.params.id);
   if (!item) {

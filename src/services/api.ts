@@ -1,4 +1,4 @@
-import { MediaItem, ArtistSummary, AlbumSummary, ScanResponse, PaginatedTracksResponse, RadioChannel, TranscodeStatus, LyricsResult } from '../types/media';
+import { MediaItem, ArtistSummary, AlbumSummary, ScanResponse, PaginatedTracksResponse, RadioChannel, TranscodeStatus, TranscodeInfo, TranscodeSummary, LyricsResult } from '../types/media';
 export class MediaApiService {
   private baseUrl: string;
 
@@ -175,8 +175,8 @@ export class MediaApiService {
     }
   }
 
-  // 转码状态查询：.mkv 需先经 ffmpeg 转成 WebM(VP9+Opus)（本机 Chrome 跳过
-  // VA-API 硬解，MP4/H.264 会黑屏有声）。前端据此显示"排队 / 转码中 x% / 失败"。
+  // 转码状态查询：.mkv 需要换容器（AV1/VP9 → WebM，H.264 → MP4，无损 remux），
+  // Chrome 没有 Matroska demuxer。前端据此显示"排队 / 转码中 x% / 已就绪"。
   async getTranscodeStatus(trackId: string): Promise<TranscodeStatus | null> {
     try {
       const res = await fetch(this.getFullUrl(`/api/transcode/${trackId}`), {
@@ -186,6 +186,38 @@ export class MediaApiService {
       return (await res.json()) as TranscodeStatus;
     } catch (err) {
       return null;
+    }
+  }
+
+  // 全库 .mkv 转码进度汇总（列表顶部统计条）
+  async getTranscodeSummary(): Promise<TranscodeSummary | null> {
+    try {
+      const res = await fetch(this.getFullUrl('/api/transcode/summary'), {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as TranscodeSummary;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // 批量查询转码状态（列表轮询，只读，不触发转码）
+  async getTranscodeStatusBatch(ids: string[]): Promise<Record<string, TranscodeInfo>> {
+    if (ids.length === 0) return {};
+    try {
+      const url = new URL(this.getFullUrl('/api/transcode/status'), window.location.origin);
+      url.searchParams.append('ids', ids.join(','));
+      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return {};
+      const data = (await res.json()) as { items: Array<{ id: string; transcode: TranscodeInfo | null }> };
+      const map: Record<string, TranscodeInfo> = {};
+      for (const it of data.items || []) {
+        if (it.transcode) map[it.id] = it.transcode;
+      }
+      return map;
+    } catch (err) {
+      return {};
     }
   }
 

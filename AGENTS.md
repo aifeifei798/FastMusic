@@ -107,6 +107,14 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   The scanner skips sidecars via `isSidecarFile()`, so they are never indexed as audio/video.
   Client `VideoJsPlayer.tsx` uses `video/webm` for `.mkv` and polls `/api/transcode/:id` only to render
   the "排队 / 转码中 x%" badge.
+- **Library list shows per-`.mkv` remux status** in the 大小/操作 column (`✓ WEBM`/`✓ MP4` = ready,
+  amber spinner `转码 42%`, `排队`, dashed `待转码`, red `转码失败`), plus a summary chip next to the
+  MTV/音乐 toggle (`991/1233 · 3 · 239`). Server side: `/api/tracks` decorates every item with
+  `transcode: TranscodeInfo` via `decorateItem()`/`transcodeInfo()` (read-only, never starts a job),
+  and `GET /api/transcode/summary` + `GET /api/transcode/status?ids=...` back the chip and the
+  10s poll in `LibraryView.tsx` (`transcodeById` state, `tracksRef` so the interval is created once).
+  Transient ffmpeg failures (killed process, deleted tmp) are retried up to 2× by
+  `markTranscodeError()` before a job is marked `error`.
   Note: music-metadata does NOT parse Matroska, so `parseMediaFileMetadata` falls back to
   `probeMediaWithFfprobe()` (async ffprobe `format=duration`) for any file where it gave
   nothing — otherwise all 1233 `.mkv` items had `duration: undefined` and the progress bar was garbage.

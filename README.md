@@ -81,6 +81,8 @@ src/
 | `GET /api/tracks/:id` | 曲目详情 |
 | `GET /api/stream/:id` | 流式播放(206 Range;`.mkv` 自动 remux/转码) |
 | `GET /api/transcode/:id` | 转码任务状态(前端显示进度) |
+| `GET /api/transcode/summary` | 全库 `.mkv` 换容器进度汇总:`{total_mkv, ready, running, queued, pending, error}` |
+| `GET /api/transcode/status?ids=a,b,c` | 批量只读状态(列表每 10s 轮询,不触发转码) |
 | `GET /api/lyrics` | 网易云歌词代理:`?title=&artist=&duration=`(自动搜索匹配)或 `?id=<网易云歌曲ID>`;返回 `{found, lyric, tlyric, romalrc}` |
 
 ## 📝 已知事项

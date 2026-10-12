@@ -14,9 +14,13 @@ import {
   RefreshCw,
   CheckCircle2,
   Radio,
-  Heart
+  Heart,
+  Loader2,
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
-import { MediaItem, ArtistSummary, AlbumSummary } from '../types/media';
+import { MediaItem, ArtistSummary, AlbumSummary, TranscodeInfo, TranscodeSummary } from '../types/media';
+import { mediaApi } from '../services/api';
 
 interface LibraryViewProps {
   tracks: MediaItem[];
@@ -104,6 +108,93 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       return `${(mb / 1024).toFixed(2)} GB`;
     }
     return `${mb.toFixed(1)} MB`;
+  };
+
+  // .mkv 换容器(remux)状态：/api/tracks 响应带初始值，之后每 10s 轮询刷新，
+  // 这样后台预转码队列的进度（排队 → 转码中 → 已就绪）在列表里是活的。
+  const tracksRef = useRef<MediaItem[]>(tracks);
+  tracksRef.current = tracks;
+  const [transcodeById, setTranscodeById] = useState<Record<string, TranscodeInfo>>({});
+  const [transcodeSummary, setTranscodeSummary] = useState<TranscodeSummary | null>(null);
+
+  useEffect(() => {
+    const refresh = async () => {
+      const ids = tracksRef.current.filter((t) => t.ext === '.mkv').map((t) => t.id);
+      const [summary, batch] = await Promise.all([
+        mediaApi.getTranscodeSummary(),
+        mediaApi.getTranscodeStatusBatch(ids),
+      ]);
+      if (summary) setTranscodeSummary(summary);
+      if (Object.keys(batch).length > 0) {
+        setTranscodeById((prev) => ({ ...prev, ...batch }));
+      }
+    };
+    refresh();
+    const timer = setInterval(refresh, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const getTranscode = (track: MediaItem): TranscodeInfo | undefined =>
+    transcodeById[track.id] || track.transcode;
+
+  // 转码状态徽章（仅 .mkv 有）
+  const transcodeBadge = (track: MediaItem) => {
+    const info = getTranscode(track);
+    if (!info) return null;
+    const sidecar = info.out_size ? formatFileSize(info.out_size) : '';
+    if (info.status === 'ready') {
+      return (
+        <span
+          title={`已转码为 ${info.container || 'webm'} sidecar${sidecar ? ` (${sidecar})` : ''}`}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-900/25 text-emerald-300 border border-emerald-700/40"
+        >
+          <CheckCircle2 className="w-3 h-3" />
+          <span>{(info.container || 'webm').toUpperCase()}</span>
+        </span>
+      );
+    }
+    if (info.status === 'running') {
+      return (
+        <span
+          title="正在 remux/转码，完成后自动可播"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-900/25 text-amber-300 border border-amber-700/40"
+        >
+          <Loader2 className="w-3 h-3 animate-spin" />
+          <span>{info.progress > 0 ? `转码 ${info.progress}%` : '转码中'}</span>
+        </span>
+      );
+    }
+    if (info.status === 'queued') {
+      return (
+        <span
+          title="排队等待转码（后台队列按文件从小到大处理）"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-800 text-neutral-400 border border-neutral-700/50"
+        >
+          <Clock className="w-3 h-3" />
+          <span>排队</span>
+        </span>
+      );
+    }
+    if (info.status === 'error') {
+      return (
+        <span
+          title={info.progress === 0 ? '转码失败' : '转码失败'}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-900/25 text-rose-300 border border-rose-700/40"
+        >
+          <AlertTriangle className="w-3 h-3" />
+          <span>转码失败</span>
+        </span>
+      );
+    }
+    return (
+      <span
+        title="未入转码队列（PRETRANCODE_MKV=0 或新扫描的文件）"
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-800/60 text-neutral-500 border border-dashed border-neutral-700/60"
+      >
+        <Clock className="w-3 h-3" />
+        <span>待转码</span>
+      </span>
+    );
   };
 
   // Filtered artists by A-Z letter
@@ -248,6 +339,31 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               音乐
             </button>
           </div>
+
+          {/* .mkv 换容器(remux)进度统计：已就绪 / 进行中 / 排队 */}
+          {transcodeSummary && transcodeSummary.total_mkv > 0 && (
+            <div
+              title={`全库 ${transcodeSummary.total_mkv} 个 .mkv：已转码 ${transcodeSummary.ready}，转码中 ${transcodeSummary.running}，排队 ${transcodeSummary.queued}${transcodeSummary.pending ? `，未入队 ${transcodeSummary.pending}` : ''}${transcodeSummary.error ? `，失败 ${transcodeSummary.error}` : ''}`}
+              className="flex items-center gap-2 shrink-0 text-[11px] font-medium text-neutral-400"
+            >
+              <span className="flex items-center gap-1 text-emerald-300">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {transcodeSummary.ready}/{transcodeSummary.total_mkv}
+              </span>
+              {transcodeSummary.running > 0 && (
+                <span className="flex items-center gap-1 text-amber-300">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  {transcodeSummary.running}
+                </span>
+              )}
+              {(transcodeSummary.queued > 0 || transcodeSummary.pending > 0) && (
+                <span className="flex items-center gap-1 text-neutral-500">
+                  <Clock className="w-3.5 h-3.5" />
+                  {transcodeSummary.queued + transcodeSummary.pending}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -452,6 +568,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         <span className="hidden md:inline font-mono text-[11px] text-neutral-500 tabular-nums">
                           {formatFileSize(track.file_size)}
                         </span>
+
+                        {transcodeBadge(track)}
 
                         {onToggleFavorite && (
                           <button
@@ -731,6 +849,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         <span className="hidden md:inline font-mono text-[11px] text-neutral-500 tabular-nums">
                           {formatFileSize(track.file_size)}
                         </span>
+
+                        {transcodeBadge(track)}
 
                         {onToggleFavorite && (
                           <button
