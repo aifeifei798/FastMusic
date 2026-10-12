@@ -228,7 +228,9 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   `loop-one`（单曲循环）由 `VideoJsPlayer` 的 `ended` 处理器（读 `playModeRef`）`currentTime(0)+play()` 重播，
   App 的 `handleNextTrack` 在 `loop-one` 时直接 return。
 - **频谱模式有"无"**: `VideoJsPlayer.tsx` 的视觉模式切换（柱状频谱 / 波形图 / 光晕环 / 对称频谱 / **无**）
-  持久在 `localStorage('fastmusic_visualizer')`。选 `none` 时 `AudioVisualizer` 完全不挂载（舞台纯黑，
+  持久在 `localStorage('fastmusic_visualizer')`。模式列表是模块级 `VISUALIZER_MODES`（mode + lucide icon +
+  label/hint），渲染时**只显示图标**（文字在手机上会把顶栏挤成多行），名称走 `title` / `aria-label`；
+  新增模式时改这个数组即可，i18n 表需要对应的 label/hint key。选 `none` 时 `AudioVisualizer` 完全不挂载（舞台纯黑，
   只剩左侧信息列与右侧歌词列），所以 `AudioVisualizer` 的 canvas 不存在 — 不要假设音频曲目一定有 canvas。
   列表工具栏里的"随心电台"按钮已删除（`LibraryView.tsx` 不再接收 `onStartRadio`），电台入口只剩页头
   的 nav 链接与"随心电台/电台广播中"按钮，以及 `R` 键。搜索框不再被 `max-w-xl` 限制，而是 `flex-1`

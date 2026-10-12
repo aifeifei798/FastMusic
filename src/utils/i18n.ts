@@ -207,6 +207,7 @@ const EN: Record<string, string> = {
   '光晕环': 'Halo',
   '对称双向频谱 (Mirrored EQ)': 'Mirrored spectrum',
   '对称频谱': 'Mirrored',
+  '无频谱': 'No visualizer',
   '无频谱（纯黑舞台，只保留歌词与信息）':
     'No visualizer (plain stage, lyrics and info only)',
   '无': 'None',

@@ -58,6 +58,20 @@ const EQ_PRESET_BY_NAME: Record<string, number[]> = EQ_PRESETS.reduce(
   {} as Record<string, number[]>,
 );
 
+// 频谱模式切换: 只显示图标(文字在手机上会把控制栏挤成多行), 名称走 title / aria-label
+const VISUALIZER_MODES: {
+  mode: VisualizerMode;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  hint: string;
+}[] = [
+  { mode: 'bars', icon: BarChart2, label: '柱状频谱', hint: '经典柱状频谱 (Bars EQ)' },
+  { mode: 'wave', icon: Waves, label: '波形图', hint: '示波器波形 (Waveform)' },
+  { mode: 'circle', icon: Disc, label: '光晕环', hint: '光晕环状频谱 (Circular Halo)' },
+  { mode: 'mirrored', icon: Activity, label: '对称频谱', hint: '对称双向频谱 (Mirrored EQ)' },
+  { mode: 'none', icon: EyeOff, label: '无频谱', hint: '无频谱（纯黑舞台，只保留歌词与信息）' },
+];
+
 // --- 歌词 (LRC) 解析 ---
 // 一行可能有多个时间戳 ([00:01.00][00:02.00] 同一句), 展开成多条。
 interface LyricLine {
@@ -1059,88 +1073,27 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             </button>
           )}
 
-          {/* 均衡器 视觉模式切换 — 音频曲目，与媒体标记同一行 */}
+          {/* 均衡器 视觉模式切换 — 音频曲目，与媒体标记同一行（图标-only，窄屏不会换行） */}
           {!isVideo && (
-            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-app/80 border border-line/80 backdrop-blur-md shadow-lg">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  changeVisualizerMode('bars');
-                }}
-                title={t('经典柱状频谱 (Bars EQ)')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
-                  visualizerMode === 'bars'
-                    ? 'bg-accent text-white shadow-sm'
-                    : 'text-muted hover:text-ink-2 hover:bg-surface-2/60'
-                }`}
-              >
-                <BarChart2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{t('柱状频谱')}</span>
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  changeVisualizerMode('wave');
-                }}
-                title={t('示波器波形 (Waveform)')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
-                  visualizerMode === 'wave'
-                    ? 'bg-accent text-white shadow-sm'
-                    : 'text-muted hover:text-ink-2 hover:bg-surface-2/60'
-                }`}
-              >
-                <Waves className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{t('波形图')}</span>
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  changeVisualizerMode('circle');
-                }}
-                title={t('光晕环状频谱 (Circular Halo)')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
-                  visualizerMode === 'circle'
-                    ? 'bg-accent text-white shadow-sm'
-                    : 'text-muted hover:text-ink-2 hover:bg-surface-2/60'
-                }`}
-              >
-                <Disc className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{t('光晕环')}</span>
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  changeVisualizerMode('mirrored');
-                }}
-                title={t('对称双向频谱 (Mirrored EQ)')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
-                  visualizerMode === 'mirrored'
-                    ? 'bg-accent text-white shadow-sm'
-                    : 'text-muted hover:text-ink-2 hover:bg-surface-2/60'
-                }`}
-              >
-                <Activity className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{t('对称频谱')}</span>
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  changeVisualizerMode('none');
-                }}
-                title={t('无频谱（纯黑舞台，只保留歌词与信息）')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
-                  visualizerMode === 'none'
-                    ? 'bg-accent text-white shadow-sm'
-                    : 'text-muted hover:text-ink-2 hover:bg-surface-2/60'
-                }`}
-              >
-                <EyeOff className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{t('无')}</span>
-              </button>
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-app/80 border border-line/80 backdrop-blur-md shadow-lg">
+              {VISUALIZER_MODES.map(({ mode, icon: Icon, label, hint }) => (
+                <button
+                  key={mode}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    changeVisualizerMode(mode);
+                  }}
+                  title={t(hint)}
+                  aria-label={t(label)}
+                  className={`p-1.5 rounded-lg transition-all ${
+                    visualizerMode === mode
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-muted hover:text-ink-2 hover:bg-surface-2/60'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                </button>
+              ))}
             </div>
           )}
         </div>
