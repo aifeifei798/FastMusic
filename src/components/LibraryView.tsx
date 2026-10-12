@@ -94,7 +94,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     onTabChange?.(tab);
   };
   const [letterFilter, setLetterFilter] = useState<string>('ALL');
-  
+  // 歌手 / 专辑标签的排序方式（网格卡片没有服务端排序，客户端排即可）
+  const [entitySort, setEntitySort] = useState<'name' | 'count'>('name');
+  // 网格只渲染前 N 张卡片，滚动触底再追加，避免 1.5 万张专辑卡片一次性塞进 DOM
+  const [artistLimit, setArtistLimit] = useState(120);
+  const [albumLimit, setAlbumLimit] = useState(120);
+
   // The internal scroll box — auto-appends the next batch only when the user has
   // actually scrolled near the bottom of the currently-loaded content, so memory
   // stays bounded instead of loading the entire library at once.
@@ -224,29 +229,54 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     );
   };
 
-  // Filtered artists by A-Z letter
-  const filteredArtists = useMemo(() => {
-    if (letterFilter === 'ALL') return artists;
-    return artists.filter(a => {
-      const firstChar = a.artist_name.trim().charAt(0).toUpperCase();
-      if (letterFilter === '#') {
-        return !/[A-Z]/.test(firstChar);
-      }
-      return firstChar === letterFilter;
-    });
-  }, [artists, letterFilter]);
+  // 搜索框也作用于歌手 / 专辑标签：输入关键词时只保留名字包含它的条目
+  const q = searchQuery.trim().toLowerCase();
 
-  // Filtered albums by A-Z letter
-  const filteredAlbums = useMemo(() => {
-    if (letterFilter === 'ALL') return albums;
-    return albums.filter(a => {
-      const firstChar = a.album_name.trim().charAt(0).toUpperCase();
-      if (letterFilter === '#') {
-        return !/[A-Z]/.test(firstChar);
-      }
+  // Filtered artists by A-Z letter（字母索引 + 搜索 + 排序）
+  const filteredArtists = useMemo(() => {
+    const list = artists.filter(a => {
+      if (q && !a.artist_name.toLowerCase().includes(q)) return false;
+      if (letterFilter === 'ALL') return true;
+      const firstChar = a.artist_name.trim().charAt(0).toUpperCase();
+      if (letterFilter === '#') return !/[A-Z]/.test(firstChar);
       return firstChar === letterFilter;
     });
-  }, [albums, letterFilter]);
+    if (entitySort === 'count') {
+      list.sort((a, b) => b.track_count - a.track_count || a.artist_name.localeCompare(b.artist_name, 'zh'));
+    } else {
+      list.sort((a, b) => a.artist_name.localeCompare(b.artist_name, 'zh'));
+    }
+    return list;
+  }, [artists, letterFilter, q, entitySort]);
+
+  // Filtered albums by A-Z letter（字母索引 + 搜索 + 排序）
+  const filteredAlbums = useMemo(() => {
+    const list = albums.filter(a => {
+      if (q && !(a.album_name.toLowerCase().includes(q) || a.artist_name.toLowerCase().includes(q))) return false;
+      if (letterFilter === 'ALL') return true;
+      const firstChar = a.album_name.trim().charAt(0).toUpperCase();
+      if (letterFilter === '#') return !/[A-Z]/.test(firstChar);
+      return firstChar === letterFilter;
+    });
+    if (entitySort === 'count') {
+      list.sort((a, b) => b.track_count - a.track_count || a.album_name.localeCompare(b.album_name, 'zh'));
+    } else {
+      list.sort((a, b) => a.album_name.localeCompare(b.album_name, 'zh'));
+    }
+    return list;
+  }, [albums, letterFilter, q, entitySort]);
+
+  // 网格标签的滚动容器：触底时追加下一批卡片（与曲目列表的无限滚动同一思路）
+  const gridBoxRef = useRef<HTMLDivElement | null>(null);
+  const handleGridScroll = () => {
+    const el = gridBoxRef.current;
+    if (!el) return;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceToBottom < 240) {
+      if (activeTab === 'artists') setArtistLimit((n) => n + 120);
+      else if (activeTab === 'albums') setAlbumLimit((n) => n + 120);
+    }
+  };
 
   const alphabet = ['ALL', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
 
@@ -725,85 +755,139 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </div>
       )}
 
-      {/* Tab 2: Artists Grid */}
+      {/* Tab 2: Artists Grid — 独立滚动容器 + 分批渲染，卡片多时也能向下浏览 */}
       {activeTab === 'artists' && (
-        <div className="flex flex-col gap-3">
-          <div className="text-xs text-neutral-400">
-            共收录 <strong className="text-white">{filteredArtists.length}</strong> 位艺术家 / UP主
+        <div className="flex flex-col gap-3 flex-1 min-h-0">
+          <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-neutral-400">
+            <span>
+              共收录 <strong className="text-white">{filteredArtists.length}</strong> 位艺术家 / UP主
+              <span className="ml-2 font-mono text-neutral-500">· 已渲染 {Math.min(artistLimit, filteredArtists.length)}</span>
+            </span>
+            <select
+              value={entitySort}
+              onChange={(e) => setEntitySort(e.target.value as 'name' | 'count')}
+              className="px-2 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-300 cursor-pointer"
+            >
+              <option value="name">按名称</option>
+              <option value="count">按作品数</option>
+            </select>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {filteredArtists.map((artist) => (
-              <div
-                key={artist.artist_name}
-                onClick={() => {
-                  onFilterArtist(artist.artist_name);
-                  setActiveTab('tracks');
-                }}
-                className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800/80 hover:border-rose-500/50 hover:bg-neutral-800/40 transition-all cursor-pointer group flex flex-col items-center text-center"
-              >
-                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-neutral-800 border-2 border-neutral-700 group-hover:border-rose-500/80 transition-colors shadow-lg mb-3 flex items-center justify-center">
-                  {artist.avatar_url ? (
-                    <img
-                      src={artist.avatar_url}
-                      alt={artist.artist_name}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                    />
-                  ) : (
-                    <User className="w-8 h-8 text-neutral-500" />
-                  )}
+          <div
+            ref={gridBoxRef}
+            onScroll={handleGridScroll}
+            className={`overflow-y-auto flex-1 min-h-[140px] ${SCROLLBAR_CLASSES}`}
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {filteredArtists.slice(0, artistLimit).map((artist) => (
+                <div
+                  key={artist.artist_name}
+                  onClick={() => {
+                    onFilterArtist(artist.artist_name);
+                    setActiveTab('tracks');
+                  }}
+                  className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800/80 hover:border-rose-500/50 hover:bg-neutral-800/40 transition-all cursor-pointer group flex flex-col items-center text-center"
+                >
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-neutral-800 border-2 border-neutral-700 group-hover:border-rose-500/80 transition-colors shadow-lg mb-3 flex items-center justify-center">
+                    {artist.avatar_url ? (
+                      <img
+                        src={artist.avatar_url}
+                        alt={artist.artist_name}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                    ) : (
+                      <User className="w-8 h-8 text-neutral-500" />
+                    )}
+                  </div>
+                  <h4 className="font-semibold text-sm text-neutral-100 group-hover:text-rose-400 truncate w-full">
+                    {artist.artist_name}
+                  </h4>
+                  <p className="text-xs text-neutral-400 mt-1">
+                    {artist.album_count} 张专辑 · {artist.track_count} 首作品
+                  </p>
                 </div>
-                <h4 className="font-semibold text-sm text-neutral-100 group-hover:text-rose-400 truncate w-full">
-                  {artist.artist_name}
-                </h4>
-                <p className="text-xs text-neutral-400 mt-1">
-                  {artist.album_count} 张专辑 · {artist.track_count} 首作品
-                </p>
+              ))}
+            </div>
+            {artistLimit < filteredArtists.length && (
+              <div className="flex justify-center mt-3">
+                <button
+                  onClick={() => setArtistLimit((n) => n + 120)}
+                  className="px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-300 hover:text-white hover:border-rose-500/50 transition-colors cursor-pointer"
+                >
+                  加载更多 ({filteredArtists.length - artistLimit})
+                </button>
               </div>
-            ))}
+            )}
           </div>
         </div>
       )}
 
-      {/* Tab 3: Albums Grid */}
+      {/* Tab 3: Albums Grid — 同样独立滚动 + 分批渲染 */}
       {activeTab === 'albums' && (
-        <div className="flex flex-col gap-3">
-          <div className="text-xs text-neutral-400">
-            共收录 <strong className="text-white">{filteredAlbums.length}</strong> 张专辑
+        <div className="flex flex-col gap-3 flex-1 min-h-0">
+          <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-neutral-400">
+            <span>
+              共收录 <strong className="text-white">{filteredAlbums.length}</strong> 张专辑
+              <span className="ml-2 font-mono text-neutral-500">· 已渲染 {Math.min(albumLimit, filteredAlbums.length)}</span>
+            </span>
+            <select
+              value={entitySort}
+              onChange={(e) => setEntitySort(e.target.value as 'name' | 'count')}
+              className="px-2 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-300 cursor-pointer"
+            >
+              <option value="name">按名称</option>
+              <option value="count">按曲目数</option>
+            </select>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {filteredAlbums.map((album) => (
-              <div
-                key={`${album.artist_name}-${album.album_name}`}
-                onClick={() => {
-                  onFilterAlbum(album.album_name);
-                  setActiveTab('tracks');
-                }}
-                className="p-3 rounded-2xl bg-neutral-900/60 border border-neutral-800/80 hover:border-rose-500/50 hover:bg-neutral-800/40 transition-all cursor-pointer group flex flex-col"
-              >
-                <div className="aspect-square w-full rounded-xl overflow-hidden bg-neutral-800 border border-neutral-700/80 group-hover:border-rose-500/80 transition-colors shadow-lg mb-3 flex items-center justify-center">
-                  {album.cover_url ? (
-                    <img
-                      src={album.cover_url}
-                      alt={album.album_name}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                    />
-                  ) : (
-                    <Disc className="w-10 h-10 text-neutral-500" />
-                  )}
+          <div
+            ref={gridBoxRef}
+            onScroll={handleGridScroll}
+            className={`overflow-y-auto flex-1 min-h-[140px] ${SCROLLBAR_CLASSES}`}
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {filteredAlbums.slice(0, albumLimit).map((album) => (
+                <div
+                  key={`${album.artist_name}-${album.album_name}`}
+                  onClick={() => {
+                    onFilterAlbum(album.album_name);
+                    setActiveTab('tracks');
+                  }}
+                  className="p-3 rounded-2xl bg-neutral-900/60 border border-neutral-800/80 hover:border-rose-500/50 hover:bg-neutral-800/40 transition-all cursor-pointer group flex flex-col"
+                >
+                  <div className="aspect-square w-full rounded-xl overflow-hidden bg-neutral-800 border border-neutral-700/80 group-hover:border-rose-500/80 transition-colors shadow-lg mb-3 flex items-center justify-center">
+                    {album.cover_url ? (
+                      <img
+                        src={album.cover_url}
+                        alt={album.album_name}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                    ) : (
+                      <Disc className="w-10 h-10 text-neutral-500" />
+                    )}
+                  </div>
+                  <h4 className="font-semibold text-xs text-neutral-100 group-hover:text-rose-400 truncate">
+                    {album.album_name}
+                  </h4>
+                  <p className="text-[11px] text-neutral-400 truncate mt-0.5">
+                    {album.artist_name}
+                  </p>
+                  <p className="text-[10px] text-neutral-500 mt-1 font-mono">
+                    {album.track_count} 首曲目
+                  </p>
                 </div>
-                <h4 className="font-semibold text-xs text-neutral-100 group-hover:text-rose-400 truncate">
-                  {album.album_name}
-                </h4>
-                <p className="text-[11px] text-neutral-400 truncate mt-0.5">
-                  {album.artist_name}
-                </p>
-                <p className="text-[10px] text-neutral-500 mt-1 font-mono">
-                  {album.track_count} 首曲目
-                </p>
+              ))}
+            </div>
+            {albumLimit < filteredAlbums.length && (
+              <div className="flex justify-center mt-3">
+                <button
+                  onClick={() => setAlbumLimit((n) => n + 120)}
+                  className="px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-300 hover:text-white hover:border-rose-500/50 transition-colors cursor-pointer"
+                >
+                  加载更多 ({filteredAlbums.length - albumLimit})
+                </button>
               </div>
-            ))}
+            )}
           </div>
         </div>
       )}
@@ -838,8 +922,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <div className="col-span-2 text-right">大小 / 操作</div>
               </div>
 
-              {/* Rows List — bounded height, scrolls internally so the footer stays visible */}
-              <div className={`divide-y divide-neutral-800/60 overflow-y-auto h-[390px] ${SCROLLBAR_CLASSES}`}>
+              {/* Rows List — 高度由 main 的剩余空间决定（有下限，避免行被压扁），页脚始终可见 */}
+              <div className={`divide-y divide-neutral-800/60 overflow-y-auto flex-1 min-h-[140px] ${SCROLLBAR_CLASSES}`}>
                 {favorites.map((track, idx) => {
                   const isCurrent = track.id === currentTrackId;
                   const isVideo = track.media_type === 'video';

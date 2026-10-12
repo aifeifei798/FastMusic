@@ -206,15 +206,19 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   `../types/media`). Match the surrounding file's style; don't introduce `@/` imports
   into files that use relative ones.
 - **Page layout is a fixed-height flex column** (`App.tsx:382` root `h-screen flex flex-col`):
-  header (fixed) + `<main flex-1>` (player section fixed height + library section `flex-1`)
-  + footer (fixed). The library list fills the leftover viewport and scrolls INTERNALLY
-  (`LibraryView.tsx` scroll box `overflow-y-auto h-[390px]` ≈ 8 rows — a SMALL DEFINITE height so the footer
-  stays on-screen; NOT `flex-1 min-h-0` which collapses/squishes rows so the list can't scroll; auto-append fires
-  via the box's
-  `onScroll` handler `handleScrollBox` when `scrollHeight-top-clientHeight<120`, NOT an IntersectionObserver
-  — an observer with `root=scrollBoxRef` always intersects and loads the WHOLE library into the DOM, blowing up
-  memory). Root also has `overflow-hidden` so the page itself can never scroll. Don't reintroduce `min-h-screen`,
-  unbounded list height, or an IntersectionObserver here.
+  header (fixed) + `<main flex-1 min-h-0>` (player section viewport-responsive height + library section `flex-1`)
+  + footer (fixed). Every tab scrolls INTERNALLY inside its own box: the tracks list, the favorites rows and the
+  artists/albums grids all use `overflow-y-auto flex-1 min-h-[140px]`. The `min-h-[140px]` floor is what keeps
+  rows/cards from being squished and the footer on-screen (a bare `flex-1 min-h-0` collapses the box). Tracks
+  auto-append via the box's `onScroll` handler `handleScrollBox` when `scrollHeight-top-clientHeight<120`, NOT an
+  IntersectionObserver — an observer with `root=scrollBoxRef` always intersects and loads the WHOLE library into
+  the DOM, blowing up memory. Root also has `overflow-hidden` so the page itself can never scroll. Don't
+  reintroduce `min-h-screen`, unbounded list height, or an IntersectionObserver here.
+- **Artists / Albums tabs batch-render**: all 6k artists / 15k albums are fetched at startup, but the grid only
+  renders the first `artistLimit` / `albumLimit` cards (start 120, +120 when the grid scroll box nears the bottom
+  via `handleGridScroll` + `gridBoxRef`), plus a 加载更多 button. The A-Z letter index and the toolbar search box
+  both filter these lists client-side (`filteredArtists` / `filteredAlbums` memos), and a small select beside the
+  count sorts them by name or by track count (`entitySort`).
 
 ## Conventions
 
