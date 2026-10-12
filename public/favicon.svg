@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="FastMusic">
+  <defs>
+    <linearGradient id="fm-favicon" x1="5" y1="27" x2="27" y2="5" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff3f5f"/>
+      <stop offset="0.52" stop-color="#f76b3f"/>
+      <stop offset="1" stop-color="#ffc04a"/>
+    </linearGradient>
+  </defs>
+  <!-- 16px 也清晰: 去掉内圈纹路, 闪电加粗 -->
+  <rect width="32" height="32" rx="8" fill="url(#fm-favicon)"/>
+  <circle cx="16" cy="16" r="10.6" fill="#0b0b12"/>
+  <path d="M19 5.4 L10.8 16.4 L14.6 16.4 L12.6 26.6 L21.2 15.2 L17.2 15.2 Z" fill="#ffffff"/>
+</svg>

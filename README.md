@@ -1,5 +1,7 @@
 # FastMusic
 
+![FastMusic](docs/logo.png)
+
 本地音乐 / MTV 流媒体播放器。**React SPA + Express 媒体后端**,扫描本地音乐目录,通过 HTTP Range 流式播放,自带实时频谱可视化与 10 段均衡器。
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -122,6 +124,15 @@ src/
 - 封面来自 iTunes / 网易云公开接口(网易云对部分主流歌手已下架,找不到时显示渐变唱片占位);图片缓存 `covers/` 与索引 `fastmusic_covers.json` 均已 gitignore。
 - 无测试套件;`npm run lint` 即 `tsc --noEmit`。
 - 服务端缓存 `/api/tracks` 的排序结果与 `.mkv` sidecar 状态,扫描/增删条目后自动失效;曲库索引仍是单个 JSON 文件(34k 条目约 13 MB,加载 ~100 ms),无需外部数据库。
+
+## 🔖 品牌资源
+
+- `public/logo.svg` — 完整 lockup(徽标 + wordmark),透明背景,可直接嵌入网页。
+- `public/logo-mark.svg` — 徽标本体:渐变圆角方(rose → amber) + 黑胶唱片同心纹路 + 白色闪电(“快”)。
+- `public/favicon.svg` — 16px 优化版(去掉内圈纹路,闪电加粗)。
+- `public/logo-mark-mono.svg` — 单色版(`currentColor`),深浅背景通用。
+- `docs/logo.png` (640×160) / `docs/logo-mark.png` (256×256) — 位图导出,README 顶部与 `og:image` 使用。
+- 页头 / 页脚的徽标是内联 SVG(`src/components/Logo.tsx`),几何与 `public/logo-mark.svg` 一致;改形状时两边要同步。
 
 ## 📄 许可
 

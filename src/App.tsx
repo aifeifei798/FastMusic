@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
-  Tv, 
   Server, 
   RefreshCw, 
   Radio, 
@@ -16,6 +15,7 @@ import { LibraryView } from './components/LibraryView';
 import { SystemConfigModal } from './components/SystemConfigModal';
 import { PlayHistoryModal } from './components/PlayHistoryModal';
 import { RadioStationBanner } from './components/RadioStationBanner';
+import { LogoMark } from './components/Logo';
 
 export default function App() {
   // Media library state
@@ -475,11 +475,9 @@ export default function App() {
       {/* ================= ZONE 1, 2, 3: TOP BAR CONTRACT ================= */}
       <header className="sticky top-0 z-40 w-full bg-neutral-950/90 backdrop-blur-md border-b border-neutral-800/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-6">
-          {/* Zone 1: Single Wordmark Brand */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-rose-600 to-amber-500 flex items-center justify-center text-white shadow-md shadow-rose-950/40">
-              <Tv className="w-4 h-4" />
-            </div>
+          {/* Zone 1: 品牌徽标 + wordmark */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <LogoMark className="w-8 h-8 rounded-lg shadow-md shadow-rose-950/40" />
             <span className="text-base sm:text-lg font-bold tracking-tight text-white whitespace-nowrap">
               FastMusic
             </span>
@@ -627,7 +625,10 @@ export default function App() {
       {/* Footer */}
       <footer className="mt-2 border-t border-neutral-900 bg-neutral-950 py-3 px-4 text-center text-xs text-neutral-500">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <p>© 2026 FastMusic · 本地媒体流与无损音乐中心</p>
+          <div className="flex items-center gap-2">
+            <LogoMark className="w-5 h-5 rounded-md" />
+            <p>© 2026 FastMusic · 本地媒体流与无损音乐中心</p>
+          </div>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsHistoryModalOpen(true)}
