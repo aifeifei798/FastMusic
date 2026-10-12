@@ -5,6 +5,16 @@ body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* 全屏沉浸: 控制栏隐藏时鼠标指针也消失。
+   video.js 自带 .video-js/<video> 的 cursor: pointer, 只给容器加 cursor:none
+   会被它覆盖, 所以要显式覆盖后代元素。 */
+.cursor-none,
+.cursor-none .video-js,
+.cursor-none .vjs-video,
+.cursor-none video {
+  cursor: none;
+}
+
 /* Custom scrollbars for playlists and lists */
 ::-webkit-scrollbar {
   width: 6px;

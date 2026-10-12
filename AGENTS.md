@@ -149,6 +149,10 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   （offset 可为负，前奏时列表需下移），上下行按距离淡出，窗口上下边缘用 CSS `mask-image` 渐隐
   （`.lyric-window` / `.lyric-active` 在 `src/index.css`，歌词用 Noto Serif CJK SC 衬线体）。
   开关是控制栏的 Captions 按钮或 `L` 键，持久在 `localStorage('fastmusic_lyrics')`（默认开启）。
+- **全屏沉浸隐藏鼠标指针**: 控制栏自动隐藏（播放中 3.5s 无鼠标移动 / 鼠标离开播放区）后，
+  全屏视频时容器加 `cursor-none`；但 video.js 自带 `.video-js`/`<video>` 的 `cursor: pointer`
+  会覆盖容器上的 `cursor: none`，所以 `src/index.css` 里有 `.cursor-none .video-js / .cursor-none video { cursor: none }`
+  显式覆盖后代元素。控制栏可见时指针恢复（方便点击按钮）。
 - **video.js copies the `<video>` element's className into its auto-created wrapper div at init, and the
   wrapper's classes never change afterwards.** `VideoJsPlayer.tsx` must keep the `<video>` classes STATIC
   (`video-js vjs-custom-theme w-full h-full`). Conditional visibility classes (e.g. `!isVideo ? 'opacity-0

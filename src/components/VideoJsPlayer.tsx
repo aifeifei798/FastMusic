@@ -908,7 +908,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       onMouseLeave={handleMouseLeave}
       className={`relative w-full bg-neutral-950 flex flex-col justify-between overflow-hidden transition-all duration-300 ${
         isFullscreen ? 'h-screen w-screen' : isTheaterMode ? 'h-[580px] rounded-2xl border border-neutral-800 shadow-2xl' : 'h-[440px] rounded-2xl border border-neutral-800/80 shadow-xl'
-      }`}
+      } ${isFullscreen && isVideo && !showControls ? 'cursor-none' : ''}`}
     >
       {/* Top Overlay Badge & Header Info */}
       <div
