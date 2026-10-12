@@ -1076,11 +1076,14 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         )}
       </div>
 
-      {/* 舞台布局 — 三列网格: 左 = 歌名/歌手(右对齐贴近唱片), 中 = 唱片留空区(两侧细线), 右 = 歌词竖列。
+      {/* 舞台布局 — 音频: 三列网格(左 = 歌名/歌手, 中 = 唱片留空区, 右 = 歌词竖列)。
+          视频(MTV): 画面本身就是主角, 左侧信息列与唱片留空区都不渲染, 只保留右侧歌词竖列。
           中间列固定宽度且居中，所以唱片不会被文字压住；pointer-events-none 不干扰点击播放/控制栏 */}
       {currentTrack && (
         <div
-          className="absolute inset-0 z-[15] pointer-events-none grid grid-cols-[1fr_240px_1fr] gap-4 px-5 sm:px-7"
+          className={`absolute inset-0 z-[15] pointer-events-none grid gap-4 px-5 sm:px-7 ${
+            isVideo ? 'grid-cols-[1fr_340px]' : 'grid-cols-[1fr_240px_1fr]'
+          }`}
           style={{ gridTemplateRows: '1fr' }}
           title={
             lyricMatch
@@ -1088,31 +1091,36 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               : ''
           }
         >
-          {/* 左列: 正在播放的曲目信息 (min-h-0 让 grid 的 1fr 行不被内容撑高) */}
-          <div
-            className={`min-w-0 min-h-0 flex flex-col justify-center gap-1.5 text-right pr-3 ${
-              isVideo ? 'rounded-xl bg-black/45 backdrop-blur-sm border border-white/10 px-4 py-3' : ''
-            }`}
-          >
-            <span className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">正在播放</span>
-            <h2 className="text-lg sm:text-xl font-bold leading-tight text-neutral-100 break-words drop-shadow-md">
-              {currentTrack.title}
-            </h2>
-            <p className="text-sm font-medium text-rose-400">{currentTrack.artist || '未知歌手'}</p>
-            {currentTrack.album && (
-              <p className="text-[11px] leading-snug text-neutral-500 break-words">{currentTrack.album}</p>
-            )}
-          </div>
+          {/* 左列: 正在播放的曲目信息 (仅音频曲目; min-h-0 让 grid 的 1fr 行不被内容撑高) */}
+          {!isVideo && (
+            <div className="min-w-0 min-h-0 flex flex-col justify-center gap-1.5 text-right pr-3">
+              <span className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">正在播放</span>
+              <h2 className="text-lg sm:text-xl font-bold leading-tight text-neutral-100 break-words drop-shadow-md">
+                {currentTrack.title}
+              </h2>
+              <p className="text-sm font-medium text-rose-400">{currentTrack.artist || '未知歌手'}</p>
+              {currentTrack.album && (
+                <p className="text-[11px] leading-snug text-neutral-500 break-words">{currentTrack.album}</p>
+              )}
+            </div>
+          )}
 
           {/* 中间列: 唱片留空区，两侧 hairline 让三列结构更清晰 */}
-          <div className="self-center relative h-[62%]">
-            <span className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neutral-700/45 to-transparent" />
-            <span className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neutral-700/45 to-transparent" />
-          </div>
+          {!isVideo && (
+            <div className="self-center relative h-[62%]">
+              <span className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neutral-700/45 to-transparent" />
+              <span className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neutral-700/45 to-transparent" />
+            </div>
+          )}
 
-          {/* 右列: 歌词竖列 (当前行居中高亮, 上下行淡出) */}
+          {/* 右列: 歌词竖列 (当前行居中高亮, 上下行淡出)。
+              视频时左两列不渲染, 必须显式 col-start-2 让歌词贴右边缘, 否则它会落到第一列(左侧) */}
           {showLyrics && (
-            <div className="min-w-0 min-h-0 h-full flex flex-col justify-center gap-2 pl-3">
+            <div className={`relative min-w-0 min-h-0 h-full flex flex-col justify-center gap-2 pl-3 ${isVideo ? 'col-start-2' : ''}`}>
+              {/* 视频时歌词压在画面上, 用一层从左到右渐隐的暗底保证可读性 */}
+              {isVideo && (
+                <span className="absolute inset-0 -z-10 bg-gradient-to-l from-black/60 via-black/25 to-transparent rounded-lg" />
+              )}
               {lyricStatus === 'loading' && (
                 <div className="flex items-center gap-2 text-xs text-neutral-400">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1128,34 +1136,31 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               )}
 
               {lyricStatus === 'found' && (
-                <>
-                  <div ref={lyricBoxRef} className="relative flex-1 min-h-0 overflow-hidden lyric-window">
-                    <div
-                      className="flex flex-col gap-2 transition-transform duration-500 ease-out"
-                      style={{ transform: `translateY(${-lyricOffset}px)` }}
-                    >
-                      {lyricLines.map((line, i) => {
-                        const d = i - lyricIdx;
-                        const trans = d === 0 ? findTranslation(lyricTranslations, line.time) : '';
-                        return (
-                          <p
-                            key={i}
-                            data-lyric-idx={i}
-                            className={`lyric-line ${d === 0 ? 'lyric-active' : d < 0 ? 'lyric-past' : 'lyric-next'}`}
-                          >
-                            {line.text}
-                            {trans && (
-                              <span className="mt-0.5 block text-[11px] leading-snug italic text-neutral-500">
-                                {trans}
-                              </span>
-                            )}
-                          </p>
-                        );
-                      })}
-                    </div>
+                <div ref={lyricBoxRef} className="relative flex-1 min-h-0 overflow-hidden lyric-window">
+                  <div
+                    className="flex flex-col gap-2 transition-transform duration-500 ease-out"
+                    style={{ transform: `translateY(${-lyricOffset}px)` }}
+                  >
+                    {lyricLines.map((line, i) => {
+                      const d = i - lyricIdx;
+                      const trans = d === 0 ? findTranslation(lyricTranslations, line.time) : '';
+                      return (
+                        <p
+                          key={i}
+                          data-lyric-idx={i}
+                          className={`lyric-line ${d === 0 ? 'lyric-active' : d < 0 ? 'lyric-past' : 'lyric-next'}`}
+                        >
+                          {line.text}
+                          {trans && (
+                            <span className="mt-0.5 block text-[11px] leading-snug italic text-neutral-500">
+                              {trans}
+                            </span>
+                          )}
+                        </p>
+                      );
+                    })}
                   </div>
-                  <span className="text-[10px] text-neutral-600 text-right">歌词 · 网易云</span>
-                </>
+                </div>
               )}
             </div>
           )}
