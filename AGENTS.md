@@ -140,6 +140,10 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   并两侧 hairline 分隔，右列 = 歌词竖列）；**MTV/视频** = 两列 `grid-cols-[1fr_340px]`，左侧信息列与唱片留空区
   不渲染（画面是主角，歌名/歌手/专辑仍出现在顶部控制栏与下方上下文卡片），歌词竖列贴右边缘
   （必须显式 `col-start-2`，否则唯一网格项会落到第一列即左侧），并有一层从左到右渐隐的暗底保证可读。
+  歌词竖列**贴紧画面右边缘**：舞台 grid 的 `padding-right` 由 `updateLyricRightInset()` 算出
+  （容器右缘到 `<video>` 右缘 + 画面居中产生的 letterbox 黑边），在 `loadedmetadata`、
+  `fullscreenchange` 和容器 `ResizeObserver` 时重算；全屏时 ≈0 → 贴屏幕右缘，普通/剧场模式
+  画面比容器窄时歌词会左移贴画面边缘而不是悬在黑色上。
   当前行始终居中：`lyricBoxRef` 是 `relative`，effect 用
   `el.offsetTop - box.clientHeight/2 + el.offsetHeight/2` 算出 `lyricOffset`，内层 div `translateY(-offset)`
   （offset 可为负，前奏时列表需下移），上下行按距离淡出，窗口上下边缘用 CSS `mask-image` 渐隐

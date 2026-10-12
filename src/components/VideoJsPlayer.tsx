@@ -169,6 +169,29 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   // 所以靠 <video>.videoWidth>0 决定，而不是 server media_type。
   const [hasVideoTrack, setHasVideoTrack] = useState<boolean>(false);
 
+  // 歌词竖列要贴紧"画面右边缘": 容器右缘到 <video> 右缘的距离 + 画面在 <video>
+  // 内居中时产生的左右黑边(letterbox)。全屏时通常为 0 → 歌词贴屏幕右缘;
+  // 普通/剧场模式下画面比容器窄, 黑边很大, 歌词若贴容器边缘就悬在黑色上。
+  const [lyricRightInset, setLyricRightInset] = useState<number>(0);
+
+  // 画面右边缘相对舞台右缘的偏移 = 容器右缘到 <video> 右缘 + 画面居中黑边。
+  // 舞台是 absolute inset-0 覆盖容器, 所以把 grid 的 padding-right 设成这个值,
+  // 歌词竖列就贴紧实际画面右边缘（全屏时 ≈ 0）。
+  const updateLyricRightInset = () => {
+    const v = videoRef.current;
+    const c = containerRef.current;
+    if (!v || !c || !v.videoWidth || !v.videoHeight) {
+      setLyricRightInset(0);
+      return;
+    }
+    const cRect = c.getBoundingClientRect();
+    const vRect = v.getBoundingClientRect();
+    const letterbox = Math.max(
+      0,
+      (vRect.width - vRect.height * (v.videoWidth / v.videoHeight)) / 2
+    );
+    setLyricRightInset(Math.max(0, Math.round(cRect.right - vRect.right + letterbox)));
+  };
 
   // MKV 转码进度：.mkv 源需先经 ffmpeg 转成 WebM(VP9+Opus) 侧车文件
   // （本机 Chrome 跳过 VA-API 硬解，MP4/H.264 会黑屏有声，故统一转 WebM）。
@@ -426,6 +449,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     player.on('loadedmetadata', () => {
       const v = videoRef.current;
       setHasVideoTrack(!!v && v.videoWidth > 0 && v.videoHeight > 0);
+      updateLyricRightInset();
     });
 
     // Cleanup on unmount
@@ -585,9 +609,20 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
+      updateLyricRightInset();
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // 容器尺寸变化（全屏/剧场/窗口 resize）时重新计算歌词贴边偏移
+  useEffect(() => {
+    const c = containerRef.current;
+    if (!c) return;
+    updateLyricRightInset();
+    const ro = new ResizeObserver(() => updateLyricRightInset());
+    ro.observe(c);
+    return () => ro.disconnect();
   }, []);
 
   // Controls auto-hide timer: 音频与视频统一 — 播放中 3.5s 无鼠标操作后隐藏控制栏
@@ -1085,7 +1120,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           className={`absolute inset-0 z-[15] pointer-events-none grid gap-4 px-5 sm:px-7 ${
             isVideo ? 'grid-cols-[1fr_340px]' : 'grid-cols-[1fr_240px_1fr]'
           }`}
-          style={{ gridTemplateRows: '1fr' }}
+          style={{
+            gridTemplateRows: '1fr',
+            // 视频时右列贴紧画面右边缘: 覆盖 px-5 sm:px-7 的右内边距
+            ...(isVideo ? { paddingRight: `${lyricRightInset}px` } : {}),
+          }}
           title={
             lyricMatch
               ? `歌词来源: 网易云 · ${lyricMatch.title} - ${lyricMatch.artist}`
