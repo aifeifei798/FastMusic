@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 226 64" width="226" height="64" role="img" aria-label="FastMusic">
+  <defs>
+    <linearGradient id="fm-brand" x1="10" y1="54" x2="54" y2="10" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff3f5f"/>
+      <stop offset="0.52" stop-color="#f76b3f"/>
+      <stop offset="1" stop-color="#ffc04a"/>
+    </linearGradient>
+  </defs>
+  <!-- 浅色背景版本: 徽标不变, wordmark 换成深色(#0b0b12), 背景透明 -->
+  <g>
+    <rect width="64" height="64" rx="15" fill="url(#fm-brand)"/>
+    <circle cx="32" cy="32" r="21" fill="#0b0b12"/>
+    <circle cx="32" cy="32" r="21" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="1.1"/>
+    <circle cx="32" cy="32" r="15" fill="none" stroke="#ffffff" stroke-opacity="0.14" stroke-width="1"/>
+    <circle cx="32" cy="32" r="9" fill="none" stroke="#ffffff" stroke-opacity="0.14" stroke-width="1"/>
+    <path d="M37.5 11.5 L22.5 32.5 L29 32.5 L25.5 52.5 L41.5 31 L34 31 Z" fill="#ffffff"/>
+  </g>
+  <!-- wordmark: 字体栈兜底, 需要位图时用 docs/logo-dark.png -->
+  <text x="78" y="43" font-family="Arial, 'Segoe UI', Roboto, 'Helvetica Neue', Helvetica, sans-serif"
+        font-size="30" font-weight="700" letter-spacing="-0.6" fill="#0b0b12">FastMusic</text>
+</svg>

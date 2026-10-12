@@ -127,11 +127,13 @@ src/
 
 ## 🔖 品牌资源
 
-- `public/logo.svg` — 完整 lockup(徽标 + wordmark),透明背景,可直接嵌入网页。
+- `public/logo.svg` — 完整 lockup(徽标 + **白色** wordmark),透明背景,用于深色页面。
+- `public/logo-dark.svg` — 完整 lockup(徽标 + **深色** wordmark `#0b0b12`),透明背景,用于浅色页面。
 - `public/logo-mark.svg` — 徽标本体:渐变圆角方(rose → amber) + 黑胶唱片同心纹路 + 白色闪电(“快”)。
 - `public/favicon.svg` — 16px 优化版(去掉内圈纹路,闪电加粗)。
 - `public/logo-mark-mono.svg` — 单色版(`currentColor`),深浅背景通用。
-- `docs/logo.png` (640×160) / `docs/logo-mark.png` (256×256) — 位图导出,README 顶部与 `og:image` 使用。
+- `docs/logo.png` (640×160) / `docs/logo-light.png` (640×160) — 深色卡片 / 浅色卡片横幅,README 顶部与 `og:image` 使用。
+- `docs/logo-dark.png` (452×128) / `docs/logo-mark.png` (256×256) — 位图导出(透明背景)。
 - 页头 / 页脚的徽标是内联 SVG(`src/components/Logo.tsx`),几何与 `public/logo-mark.svg` 一致;改形状时两边要同步。
 
 ## 📄 许可
