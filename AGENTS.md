@@ -211,6 +211,11 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   `title` / `aria-label`（标签的 `title` 是 `曲目 30/33.9k`），`fmtNum()` 只出现在 tooltip 与列表页脚。
   坑：lucide 的 `LucideProps` 类型不接受 `title`，给图标加 tooltip 必须包一层 `<span title=…>`。
   页头在 <640px 时隐藏 "FastMusic" wordmark（`hidden sm:inline`），语言按钮也是纯图标（Globe），否则 360px 视口会溢出。
+- **随心电台横幅（`RadioStationBanner.tsx`）是一行**: 徽标 + `FastMusic FM · 96.0 MHz` + LIVE pill + 当前曲目
+  （窄屏只留徽标 + 当前曲目，品牌与 LIVE 是 `hidden sm:inline`），右侧三个频道切换按钮（全库漫游 `Shuffle` /
+  纯音专线 `Music` / MTV 视听 `Film`）与切台 `SkipForward`、退出 `X` **全部纯图标**，名称只在 `title` /
+  `aria-label`；「智能全库洗牌算法…」说明挂在横幅的 `title`。频道列表是模块级 `CHANNELS` 数组，新增频道改它即可。
+  实测 360×640 横幅高 56px（原来三行 ~100px）。
 - **快捷键**: `J`/`K` 上一首/下一首（走 `prevNextRef` 避免闭包里的旧 index），`S` 收藏当前曲目，`L` 歌词开关，
   `R` 随心电台，`?` 打开快捷键面板，`Esc` 关闭。之前 `L` 同时绑定收藏和歌词，所以收藏改成 `S`。
 - **video.js copies the `<video>` element's className into its auto-created wrapper div at init, and the
