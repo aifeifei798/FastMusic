@@ -255,13 +255,8 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   列表工具栏里的"随心电台"按钮已删除（`LibraryView.tsx` 不再接收 `onStartRadio`），电台入口只剩页头
   的 nav 链接与"随心电台/电台广播中"按钮，以及 `R` 键。搜索框不再被 `max-w-xl` 限制，而是 `flex-1`
   填满 tabs 与筛选控件之间的剩余宽度（tabs 组 `shrink-0`）。
-- **Progress-bar scrub** (`VideoJsPlayer.tsx`): the scrub bar div wires `onMouseDown`/`onMove`/`onUp`/`onLeave`.
-  `isDraggingProgress` MUST be reset on `onMouseUp` (`handleProgressScrubEnd`) AND `onMouseLeave` — if it's only
-  set true on mousedown and never cleared, the `if (!isDraggingProgress)` guards in `handleProgressScrub` and the
-  `timeupdate` handler freeze the playhead after the first click (clicks appear to do nothing).
-  Also: a mousedown on the scrub bar whose mouseup lands on a DIFFERENT element (e.g. the play button) leaves
-  `isDraggingProgress` stuck true → audio plays (sound) but the `timeupdate` guard freezes the UI time/progress
-  bar. `togglePlay` and the source-change effect MUST `setIsDraggingProgress(false)` on play start / track change.
+- **Progress-bar scrub** (`VideoJsPlayer.tsx`): the scrub bar uses **pointer events** (`onPointerDown/Move/Up/Leave`) so mouse *and* touch both scrub. `onPointerMove` seeks while held (`progressDraggingRef.current`) — previously only `onMouseDown` seeked, so "press and drag" jumped to the click position and then did nothing (the reason the bar "couldn't be dragged"). The bar also carries `[touch-action: none]` so a finger drag isn't eaten by browser pan/scroll. Drag state is a **ref** (`progressDraggingRef`), not state: the `timeupdate` guard lives in the init effect with `deps: []`, so a state variable there is a stale closure and never actually froze the UI. A `window` `pointerup`/`pointercancel` listener clears the flag as a safety net (press on the bar, release over the play button), and `togglePlay` / the source-change effect also reset it.
+- **控制栏自动隐藏只在 `!isCompact || isFullscreen`** 时武装（`autoHideControls`）：手机上没有鼠标，胶囊一旦 `opacity-0 pointer-events-none` 就只能靠点击唤回，而点击又会切播放/暂停，进度条完全没法拖；所以窄屏非全屏时控制栏常显，全屏视频仍然 3.5s 无鼠标移动后隐藏。
 - **`DISABLE_HMR=true`** (set by AI Studio) turns off Vite HMR and file watching
   (`vite.config.ts:14-19`) to save CPU during agent edits. Expect no live reload when it's
   set; restart the server to pick up changes.

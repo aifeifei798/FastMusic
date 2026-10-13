@@ -214,7 +214,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   });
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [isDraggingProgress, setIsDraggingProgress] = useState<boolean>(false);
+  // 进度条拖拽标记用 ref: init effect 里的 timeupdate handler 闭包会捕获旧的 state 值
+  const progressDraggingRef = useRef<boolean>(false);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
   const [showControls, setShowControls] = useState<boolean>(true);
@@ -558,7 +559,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     });
 
     player.on('timeupdate', () => {
-      if (!isDraggingProgress) {
+      if (!progressDraggingRef.current) {
         const t = player.currentTime();
         if (Number.isFinite(t)) setCurrentTime(t || 0);
       }
@@ -643,7 +644,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     const player = playerRef.current;
     // 切换曲目：先复位视频轨判断，loadedmetadata 之后重新评估
     setHasVideoTrack(false);
-    setIsDraggingProgress(false);
+    progressDraggingRef.current = false;
     setCurrentTime(0);
     setBufferedEnd(0);
     currentTrackIdRef.current = currentTrack?.id;
@@ -818,18 +819,22 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  // Controls auto-hide timer: 音频与视频统一 — 播放中 3.5s 无鼠标操作后隐藏控制栏
+  // Controls auto-hide timer: 音频与视频统一 — 播放中 3.5s 无鼠标操作后隐藏控制栏。
+  // 窄屏非全屏时不自动隐藏: 手机没有鼠标，胶囊一旦隐藏就只能靠点击(而点击会切播放/暂停)唤回，
+  // 进度条也就没法拖。
+  const autoHideControls = !isCompact || isFullscreen;
+
   const resetControlsTimer = useCallback(() => {
     setShowControls(true);
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
     }
-    if (isPlaying) {
+    if (isPlaying && autoHideControls) {
       controlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false);
       }, 3500);
     }
-  }, [isPlaying]);
+  }, [isPlaying, autoHideControls]);
 
   const handleMouseMove = () => {
     resetControlsTimer();
@@ -841,21 +846,21 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       clearTimeout(controlsTimeoutRef.current);
       controlsTimeoutRef.current = null;
     }
-    if (isPlaying) {
+    if (isPlaying && autoHideControls) {
       setShowControls(false);
     }
   };
 
   // 播放开始时也武装自动隐藏计时器: 即使鼠标不经过播放区, 控制栏也会 3.5s 后隐藏
   useEffect(() => {
-    if (isPlaying) {
+    if (isPlaying && autoHideControls) {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3500);
     }
     return () => {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
-  }, [isPlaying]);
+  }, [isPlaying, autoHideControls]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -923,9 +928,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     const player = playerRef.current;
     if (!player) return;
     if (player.paused()) {
-      // 清除 scrub 锁: 否则 timeupdate 的 !isDraggingProgress 守卫冻结 UI 时间/进度条
-      // (mousedown 在 scrub bar 但 mouseup 在 play button → isDraggingProgress 残留 true)
-      setIsDraggingProgress(false);
+      // 清除 scrub 锁: 否则 timeupdate 的 !progressDraggingRef 守卫冻结 UI 时间/进度条
+      // (pointerdown 在 scrub bar 但 pointerup 在 play button → 标记残留 true)
+      progressDraggingRef.current = false;
       resumeAudioContext();
       player.play();
     } else {
@@ -941,36 +946,58 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     setResumeHint(null);
   };
 
-  const handleProgressScrubStart = (e: React.MouseEvent<HTMLDivElement>) => {
-    setIsDraggingProgress(true);
-    handleProgressScrub(e);
+  // 进度条 scrub: 用 pointer events（鼠标 + 触摸都覆盖），按住拖动时持续 seek，
+  // 而不是只在按下那一刻跳到点击位置 —— 之前"按住拖"不生效就是这个原因。
+  const progressPosFromPointer = (e: React.PointerEvent<HTMLElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return 0;
+    return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
   };
 
-  const handleProgressScrub = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const seekToProgressPos = (pos: number) => {
     if (duration <= 0) return;
     const targetTime = pos * duration;
     setCurrentTime(targetTime);
-    // 始终 seek：拖拽中也要真正移动播放头（timeupdate 守卫只冻结 UI 时间显示，不冻结 seek）
     handleSeek(targetTime);
   };
 
-  const handleProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const handleProgressPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    progressDraggingRef.current = true;
+    const pos = progressPosFromPointer(e);
     setHoverPosition(pos * 100);
     setHoverTime(pos * duration);
+    seekToProgressPos(pos);
   };
 
-  const handleProgressScrubEnd = () => {
-    setIsDraggingProgress(false);
+  const handleProgressPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const pos = progressPosFromPointer(e);
+    setHoverPosition(pos * 100);
+    if (progressDraggingRef.current) {
+      setHoverTime(pos * duration);
+      seekToProgressPos(pos);
+    }
   };
 
-  const handleProgressMouseLeave = () => {
+  const handleProgressPointerUp = () => {
+    progressDraggingRef.current = false;
+  };
+
+  const handleProgressPointerLeave = () => {
+    progressDraggingRef.current = false;
     setHoverTime(null);
-    setIsDraggingProgress(false);
   };
+
+  // 兜底: 按下进度条后 pointerup 落在别的元素上（播放按钮 / 胶囊外）也要解锁，
+  // 否则标记残留 true 会冻结 UI 时间与进度条。
+  useEffect(() => {
+    const unlock = () => { progressDraggingRef.current = false; };
+    window.addEventListener('pointerup', unlock);
+    window.addEventListener('pointercancel', unlock);
+    return () => {
+      window.removeEventListener('pointerup', unlock);
+      window.removeEventListener('pointercancel', unlock);
+    };
+  }, []);
 
   const toggleMute = () => {
     const player = playerRef.current;
@@ -1935,11 +1962,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       >
         {/* Interactive Scrubbing Progress Bar — 窄屏加高，手指更容易点 */}
         <div
-          className={`relative group w-full ${isCompact ? 'h-5' : 'h-4'} flex items-center cursor-pointer select-none`}
-          onMouseDown={handleProgressScrubStart}
-          onMouseMove={handleProgressMouseMove}
-          onMouseUp={handleProgressScrubEnd}
-          onMouseLeave={handleProgressMouseLeave}
+          className={`relative group w-full ${isCompact ? 'h-5' : 'h-4'} flex items-center cursor-pointer select-none [touch-action:none]`}
+          onPointerDown={handleProgressPointerDown}
+          onPointerMove={handleProgressPointerMove}
+          onPointerUp={handleProgressPointerUp}
+          onPointerLeave={handleProgressPointerLeave}
         >
           {/* Track background */}
           <div className={`relative w-full rounded-full bg-surface-2 transition-all overflow-hidden ${isCompact ? 'h-2.5 group-hover:h-3' : 'h-1.5 group-hover:h-2.5'}`}>
