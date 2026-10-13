@@ -106,6 +106,15 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
   // .mkv 转码（remux）队列汇总 —— 全库统计只在这里展示，列表工具栏不再显示
   const [transcode, setTranscode] = useState<TranscodeSummary | null>(null);
 
+  // 断点续播开关：默认关闭，只有用户显式开启后才记录/恢复播放位置
+  const [resumeEnabled, setResumeEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('fastmusic_resume_enabled') === '1';
+    } catch {
+      return false;
+    }
+  });
+
   // 任务从"运行中"变成"结束"时刷新列表（封面/歌词 badge 需要重新拉取）
   const runningRef = useRef<Set<CacheJobKind>>(new Set());
   const refreshRef = useRef(onRefreshData);
@@ -195,6 +204,17 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
     const updated = directories.filter(d => d !== dirToRemove);
     setDirectories(updated);
     mediaApi.updateDirectories(updated);
+  };
+
+  const handleToggleResume = () => {
+    const next = !resumeEnabled;
+    setResumeEnabled(next);
+    try {
+      localStorage.setItem('fastmusic_resume_enabled', next ? '1' : '0');
+    } catch {
+      // localStorage 不可用时仍保持当前弹窗内的状态
+    }
+    window.dispatchEvent(new CustomEvent('fastmusic:resume-enabled-change', { detail: { enabled: next } }));
   };
 
   const handleScanAll = async () => {
@@ -383,6 +403,34 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                 <span>{cacheError}</span>
               </div>
             )}
+          </div>
+
+          {/* 断点续播开关：默认关闭，开启后才记录/恢复播放位置 */}
+          <div className="p-4 rounded-xl bg-app border border-line/80 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <span className="font-medium text-ink-2 flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-amber" />
+                  <span>{t('断点续播')}</span>
+                </span>
+                <p className="text-[11px] text-muted-2 leading-relaxed">
+                  {t('记住收听歌曲的时间，重新打开同一曲目继续播放。默认关闭。')}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={resumeEnabled}
+                onClick={handleToggleResume}
+                className={`px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 shrink-0 ${
+                  resumeEnabled
+                    ? 'bg-emerald/20 border-emerald-dim/50 text-emerald hover:bg-emerald/30'
+                    : 'bg-surface-2 border-line text-muted-2 hover:text-ink hover:bg-elevated'
+                }`}
+              >
+                <span>{resumeEnabled ? t('开启') : t('关闭')}</span>
+              </button>
+            </div>
           </div>
 
           {/* .mkv 转码（remux）队列状态：全库统计收进这里，列表工具栏不再显示 */}

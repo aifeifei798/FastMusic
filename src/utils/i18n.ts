@@ -340,6 +340,11 @@ const EN: Record<string, string> = {
   '剩余 {n} 条 · 约 {eta}': '{n} left · about {eta}',
   '已停止 · 剩余 {n} 条': 'Stopped · {n} left',
   '已完成': 'Done',
+  '断点续播': 'Resume playback',
+  '记住收听歌曲的时间，重新打开同一曲目继续播放。默认关闭。':
+    'Remember listening position and resume the same track. Off by default.',
+  '已开启': 'On',
+  '已关闭': 'Off',
   '转码 / Remux 状态': 'Transcode / remux status',
   '.mkv 总数 {n}': '{n} .mkv files in total',
   'Chrome 不能直接播放 .mkv，服务端把每个 .mkv 无损换容器成 sidecar（AV1/VP9 → WebM，H.264/HEVC → MP4），写在源文件旁边；sidecar 比源文件新就不再重复转码。':

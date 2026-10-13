@@ -79,6 +79,17 @@ const VISUALIZER_MODES: {
 const VOLUME_KEY = 'fastmusic_volume';
 const RESUME_KEY = 'fastmusic_resume';
 const RESUME_MAX = 300;
+const RESUME_ENABLED_KEY = 'fastmusic_resume_enabled';
+
+function isResumeEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(RESUME_ENABLED_KEY);
+    if (raw === null) return false;
+    return raw === '1';
+  } catch {
+    return false;
+  }
+}
 
 function readSavedVolume(): number {
   const raw = localStorage.getItem(VOLUME_KEY);
@@ -190,11 +201,24 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   // server metadata 里的真实时长（秒）。分片 MP4 下 Chrome 的 duration 先等于"已缓冲片段末尾"，
   // 必须用这个种子防止 durationchange 把真实时长覆盖成局部值。
   const seedDurationRef = useRef(0);
-  // 断点续播：每曲目上次播放位置（秒），重新打开同一曲目时继续
+  // 断点续播：每曲目上次播放位置（秒），重新打开同一曲目时继续。
+  // 默认关闭，只有系统配置里开启后才记录/恢复。
+  const resumeEnabledRef = useRef<boolean>(isResumeEnabled());
   const resumeMapRef = useRef<Record<string, number>>(loadResumeMap());
   const currentTrackIdRef = useRef<string | undefined>(undefined);
   const lastResumeSaveRef = useRef(0);
   const [resumeHint, setResumeHint] = useState<number | null>(null);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ enabled: boolean }>).detail;
+      if (!detail || typeof detail.enabled !== 'boolean') return;
+      resumeEnabledRef.current = detail.enabled;
+      if (!detail.enabled) setResumeHint(null);
+    };
+    window.addEventListener('fastmusic:resume-enabled-change', handler);
+    return () => window.removeEventListener('fastmusic:resume-enabled-change', handler);
+  }, []);
 
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -564,11 +588,12 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         const t = player.currentTime();
         if (Number.isFinite(t)) setCurrentTime(t || 0);
       }
-      // 断点续播：每 10s 记录一次位置（只记"中途"，开头 10s 与最后 5s 不记）
+      // 断点续播：开关开启时每 10s 记录一次位置（只记"中途"，开头 10s 与最后 5s 不记）
       const t = player.currentTime() ?? 0;
       const dur = player.duration() ?? 0;
       const id = currentTrackIdRef.current;
       if (
+        resumeEnabledRef.current &&
         id &&
         Number.isFinite(t) && t > 10 &&
         Number.isFinite(dur) && dur > 0 && t < dur - 5 &&
@@ -676,9 +701,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       type: mime,
     });
 
-    // 断点续播：同一曲目上次中途停止 → 从上次位置继续。
+    // 断点续播：开关开启时，同一曲目上次中途停止 → 从上次位置继续。
     // 只在"中途"恢复（>10s 且离结尾 >5s），播完/开头几秒不恢复。
-    const savedPos = currentTrack?.id ? resumeMapRef.current[currentTrack.id] || 0 : 0;
+    const savedPos = resumeEnabledRef.current && currentTrack?.id
+      ? resumeMapRef.current[currentTrack.id] || 0
+      : 0;
     if (savedPos > 10 && (!seedDurationRef.current || savedPos < seedDurationRef.current - 5)) {
       player.one('loadedmetadata', () => {
         try {
