@@ -1212,7 +1212,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       // 因为舞台 overlay(absolute inset-0 z-[15])、控制胶囊、歌词列都是根容器的直接子元素,
       // 浏览器按指针下方最上层元素解析 cursor, 只给视口 div 加 cursor-none 时这些区域仍显示指针。
       // cursor 是继承属性, 根容器设 cursor-none 后 video.js 的 wrapper/<video> 也继承。
-      className={`relative w-full bg-app flex flex-col justify-between overflow-hidden transition-all duration-300 [&_.vjs-custom-theme]:font-[inherit]! [&_.vjs-custom-theme]:bg-transparent! [&_.vjs-custom-theme]:w-full! [&_.vjs-custom-theme]:h-full! [&_.vjs-custom-theme_.vjs-tech]:object-contain! [&_.video-js:focus]:outline-none! ${
+      className={`relative w-full bg-app flex flex-col justify-between ${compactCollapsed && showVolumePanel ? 'overflow-visible' : 'overflow-hidden'} transition-all duration-300 [&_.vjs-custom-theme]:font-[inherit]! [&_.vjs-custom-theme]:bg-transparent! [&_.vjs-custom-theme]:w-full! [&_.vjs-custom-theme]:h-full! [&_.vjs-custom-theme_.vjs-tech]:object-contain! [&_.video-js:focus]:outline-none! ${
         isFullscreen ? 'h-screen w-screen' : compactCollapsed ? 'h-[92px] rounded-xl border border-line/80 shadow-lg' : isCompact ? 'h-[clamp(260px,calc(100vh-300px),420px)] rounded-2xl border border-line/80 shadow-xl' : isTheaterMode ? 'h-[clamp(300px,calc(100vh-300px),580px)] rounded-2xl border border-line shadow-2xl' : 'h-[clamp(240px,calc(100vh-420px),440px)] rounded-2xl border border-line/80 shadow-xl'
       } ${isFullscreen && isVideo && !showControls ? 'cursor-none' : ''}`}
     >
@@ -1268,6 +1268,27 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               className="p-2 rounded-lg text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
             >
               <SkipForward className="w-4 h-4" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowEqPanel(false);
+                setShowVolumePanel((prev) => !prev);
+              }}
+              aria-label={t('音量调节')}
+              title={t('音量: {volume}%{boost}', { volume: Math.round(volume * 100), boost: volumeBoost ? t(' ×2 增强') : '' })}
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors ${
+                showVolumePanel ? 'bg-accent/20 text-accent' : 'bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink'
+              }`}
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX className="w-4 h-4" />
+              ) : (
+                <Volume2 className="w-4 h-4" />
+              )}
+              <span className="font-mono tabular-nums text-[11px] text-ink-2">
+                {Math.round((isMuted ? 0 : volume) * 100)}%
+              </span>
             </button>
             <button
               onClick={() => setPlayerExpanded(true)}
@@ -1724,9 +1745,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       )}
 
       {/* 音量面板 — 桌面和窄屏都弹同一套大推杆面板: 内联小推杆不够直观, 手机铺满播放区,
-          桌面浮在控制胶囊上方，避免遮住画面 */}
-      {!compactCollapsed && showVolumePanel && (
-        <div className={`absolute z-40 rounded-xl bg-app/90 border border-line p-3 flex flex-col gap-2 shadow-2xl backdrop-blur-sm ${isCompact ? 'inset-2' : 'left-1/2 -translate-x-1/2 bottom-[104px] w-[360px] max-h-[calc(100%-112px)]'}`}>
+          桌面浮在控制胶囊上方，避免遮住画面; 折叠态时挂在胶囊下方，不展开播放器也能调音量 */}
+      {showVolumePanel && (
+        <div className={`absolute z-40 rounded-xl bg-app/90 border border-line p-3 flex flex-col gap-2 shadow-2xl backdrop-blur-sm ${isCompact ? (compactCollapsed ? 'left-2 right-2 top-[96px] h-[132px]' : 'inset-2') : 'left-1/2 -translate-x-1/2 bottom-[104px] w-[360px] max-h-[calc(100%-112px)]'}`}>
           <div className="flex items-center justify-between">
             <span className="text-xs text-ink-2 flex items-center gap-1">
               <Volume2 className="w-3.5 h-3.5" />
@@ -1856,7 +1877,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   +5%
                 </button>
               </div>
-              <p className="text-[10px] text-muted-2">{t('拖动推杆或点预设，↑/↓ 微调，Esc 关闭')}</p>
+              {!compactCollapsed && (
+                <p className="text-[10px] text-muted-2">{t('拖动推杆或点预设，↑/↓ 微调，Esc 关闭')}</p>
+              )}
             </div>
           </div>
         </div>

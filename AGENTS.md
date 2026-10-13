@@ -225,7 +225,7 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   `window._fastMusicPlayerControls`（`togglePlay / seekBy / adjustVolume / toggleMute / toggleFullscreen / cycleVisualizer`，
   与 `window._fastMusicAnalyser` 同一套路；`VideoJsPlayer` 的 effect **没有 deps**，每次渲染刷新闭包，卸载时 delete）。
   **坑**：`Space` 与方向键在 `e.target` 位于 `.video-js` 内时跳过，否则 video.js 自带快捷键会双重触发（ seek 两次 / 音量跳两格）。
-- **断点续播 + 音量记忆（`VideoJsPlayer.tsx`）**：`timeupdate` 每 10s 写 `localStorage('fastmusic_resume')`（`{id: seconds}`，超过 300 条删最早的），只记"中途"（`t > 10` 且 `t < duration - 5`）；切曲目时 `currentTrackIdRef`/`lastResumeSaveRef` 重置。恢复在 `player.one('loadedmetadata')` 里 seek（`savedPos > 10` 且 < seed 时长 − 5），并在左列信息区显示「继续播放 0:42」（`aria-live="polite"`，8s 后自动清，`handleSeek` 也清）。音量持久化到 `localStorage('fastmusic_volume')`（默认 0.7），`volumechange` 写入，init 时 `player.volume(readSavedVolume())`。**音量入口统一为「图标 + 百分比」按钮**，点击弹出大推杆面板；桌面不再内联 10×40 小推杆。面板 header（标题 + ×2 + 静音 + `X`）+ 一行 `flex-1 min-h-0`（大推杆 `w-8`，窄屏 `height:100%` 铺满播放区，桌面固定 `height:120px` 浮在控制胶囊上方，带 25/50/75 刻度，滑块 `w-6 h-6`）+ 右侧大数字 `text-3xl` / 20-40-60-80-100% 预设 / −5% +5% / 提示文案。窄屏面板 `absolute z-40 inset-2` 铺满播放区；桌面面板 `absolute z-40 left-1/2 -translate-x-1/2 bottom-[104px] w-[360px] max-h-[calc(100%-112px)]`，避免遮住画面。推杆 `onPointerDown/Move/Up/Leave` 用 `volDraggingRef` 判断拖拽（按 `rect.bottom - clientY` 算比例，1% 精度），`role="slider"` + `tabIndex=0`，本地 `onKeyDown` 处理 ↑↓（必须 `e.stopPropagation()`，否则 window 的全局 ↑/↓ 会双重调整）。`showVolumePanel` 与 `showEqPanel` 互斥（打开一个自动关另一个，两个都锚在胶囊上方会重叠），`Esc` 关闭音量面板；折叠态（`compactCollapsed`）面板不渲染。
+- **断点续播 + 音量记忆（`VideoJsPlayer.tsx`）**：`timeupdate` 每 10s 写 `localStorage('fastmusic_resume')`（`{id: seconds}`，超过 300 条删最早的），只记"中途"（`t > 10` 且 `t < duration - 5`）；切曲目时 `currentTrackIdRef`/`lastResumeSaveRef` 重置。恢复在 `player.one('loadedmetadata')` 里 seek（`savedPos > 10` 且 < seed 时长 − 5），并在左列信息区显示「继续播放 0:42」（`aria-live="polite"`，8s 后自动清，`handleSeek` 也清）。音量持久化到 `localStorage('fastmusic_volume')`（默认 0.7），`volumechange` 写入，init 时 `player.volume(readSavedVolume())`。**音量入口统一为「图标 + 百分比」按钮**，点击弹出大推杆面板；桌面不再内联 10×40 小推杆。面板 header（标题 + ×2 + 静音 + `X`）+ 一行 `flex-1 min-h-0`（大推杆 `w-8`，窄屏 `height:100%` 铺满播放区，桌面固定 `height:120px` 浮在控制胶囊上方，带 25/50/75 刻度，滑块 `w-6 h-6`）+ 右侧大数字 `text-3xl` / 20-40-60-80-100% 预设 / −5% +5% / 提示文案。窄屏展开态面板 `absolute z-40 inset-2` 铺满播放区；窄屏折叠态面板挂在「正在播放」胶囊下方（`absolute z-40 left-2 right-2 top-[96px] h-[132px]`，根容器临时 `overflow-visible`，不展开播放器也能调音量）；桌面面板 `absolute z-40 left-1/2 -translate-x-1/2 bottom-[104px] w-[360px] max-h-[calc(100%-112px)]`，避免遮住画面。推杆 `onPointerDown/Move/Up/Leave` 用 `volDraggingRef` 判断拖拽（按 `rect.bottom - clientY` 算比例，1% 精度），`role="slider"` + `tabIndex=0`，本地 `onKeyDown` 处理 ↑↓（必须 `e.stopPropagation()`，否则 window 的全局 ↑/↓ 会双重调整）。`showVolumePanel` 与 `showEqPanel` 互斥（打开一个自动关另一个，两个都锚在胶囊上方会重叠），`Esc` 关闭音量面板；折叠态面板隐藏提示文案，避免 132px 高度内溢出。
 - **video.js copies the `<video>` element's className into its auto-created wrapper div at init, and the
   wrapper's classes never change afterwards.** `VideoJsPlayer.tsx` must keep the `<video>` classes STATIC
   (`video-js vjs-custom-theme w-full h-full`). Conditional visibility classes (e.g. `!isVideo ? 'opacity-0
@@ -280,9 +280,10 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   菜单 / sheet 这类变化必须走 JS。`App.tsx` 把 `isCompact` 传给 `VideoJsPlayer` 与 `LibraryView`（两者都有
   `isCompact?: boolean` 参数，默认 false）。实测 360×640：页头 57px + 折叠播放器 92px + 工具栏 38px + 列表 346px（10 行）。
   - **播放器折叠**: `compactCollapsed = isCompact && !expanded && !isFullscreen`，根容器 `h-[92px]`，只渲染一条
-    「正在播放」胶囊（44px mini 唱片 + 标题/时间 + 上一首/播放/下一首 + 展开按钮）；`<video>` 仍在 DOM 里
+    「正在播放」胶囊（44px mini 唱片 + 标题/时间 + 上一首/播放/下一首 + 音量按钮 + 展开按钮）；`<video>` 仍在 DOM 里
     （视口 `opacity-0 pointer-events-none`），所以音频照常播放，频谱 / 唱片 / 歌词 / 控制胶囊全部不渲染
-    （控制胶囊包在 `{!compactCollapsed && ...}` 里）。展开状态持久在 `localStorage('fastmusic_player_expanded')`
+    （控制胶囊包在 `{!compactCollapsed && ...}` 里）。折叠态的音量按钮点击后弹出同一音量面板，面板挂在胶囊下方而不是
+    展开播放器；展开状态持久在 `localStorage('fastmusic_player_expanded')`
     （默认窄屏折叠、桌面展开），全屏时始终展开。折叠胶囊的时间先显示、歌手名溢出截断。
   - **展开态高度** `clamp(260px,calc(100vh-300px),420px)`；音频舞台网格 `120px 1fr` + 行 `1fr 62px`
     （唱片左列 `col-start-1 row-start-1 h-full`，信息列 `col-start-2` 左对齐，歌词横向带 `col-span-2`），
@@ -296,7 +297,7 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
     「收起播放器」按钮（必须 `isCompact &&` 条件，桌面没有折叠态）。胶囊高约 124px，
     `bottom: max(12px, env(safe-area-inset-bottom))`（inline style，iOS 安全区）。均衡器面板窄屏是全宽 bottom sheet
     (`left-2 right-2 bottom-[140px]`)，歌词样式面板是顶部 sheet (`top-2 left-2 right-2`)；两个面板 `bg-app/95`。
-    窄屏音量面板是 `inset-2` 覆盖整个播放区（推杆高度自适应，不会被裁），桌面音量面板浮在控制胶囊上方，与均衡器面板互斥。
+    窄屏展开态音量面板是 `inset-2` 覆盖整个播放区（推杆高度自适应，不会被裁），窄屏折叠态音量面板挂在胶囊下方，桌面音量面板浮在控制胶囊上方，与均衡器面板互斥。
   - **页头 / 页脚 / 工具栏**: 页头窄屏只留 电台 / 收藏 / 主题 / 系统配置，历史 / 快捷键 / 语言是 `hidden sm:block`
     并收进「更多」菜单（`MoreHorizontal`，`moreMenuOpen` + `moreMenuRef`，外部点击或 Esc 关闭，面板
     `absolute top-full right-0 w-[220px]`，`sm:hidden`）。页脚窄屏 `hidden sm:block`。`main` 的 padding 窄屏
