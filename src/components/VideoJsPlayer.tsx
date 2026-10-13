@@ -1248,15 +1248,24 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       {compactCollapsed && (
         <div className="flex items-center gap-2.5 px-3 py-2 shrink-0" onClick={(e) => e.stopPropagation()}>
           <div className={`relative w-11 h-11 rounded-full bg-vinyl border-2 border-line-strong/70 flex items-center justify-center overflow-hidden shrink-0 ${isPlaying ? 'vinyl-spin' : ''}`}>
-            {coverUrl ? (
+            {coverUrl && coverLoaded ? (
               <img
                 src={coverUrl}
                 alt={currentTrack?.title || ''}
                 referrerPolicy="no-referrer"
+                onLoad={() => setCoverLoaded(true)}
                 className="w-full h-full rounded-full object-cover"
               />
             ) : (
-              <Music className="w-4 h-4 text-muted" />
+              <svg viewBox="0 0 44 44" aria-hidden="true" className="w-full h-full">
+                <circle cx="22" cy="22" r="20" fill="var(--color-vinyl)" />
+                <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                <circle cx="22" cy="22" r="13" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1" />
+                <circle cx="22" cy="22" r="8" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1" />
+                <path d="M22 2 A20 20 0 0 1 42 22" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" />
+                <circle cx="22" cy="22" r="4" fill="var(--color-app)" />
+                <circle cx="22" cy="22" r="1.2" fill="var(--color-muted)" />
+              </svg>
             )}
           </div>
           <div className="min-w-0 flex-1">

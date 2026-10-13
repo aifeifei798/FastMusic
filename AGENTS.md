@@ -281,7 +281,8 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   `isCompact?: boolean` 参数，默认 false）。实测 360×640：页头 57px + 折叠播放器 92px + 工具栏 38px + 列表 346px（10 行）。
   - **播放器折叠**: `compactCollapsed = isCompact && !expanded && !isFullscreen`，根容器 `h-[92px]`，只渲染一条
     「正在播放」胶囊（44px mini 唱片 + 标题/时间 + 上一首/播放/下一首 + 音量按钮 + 展开按钮）；`<video>` 仍在 DOM 里
-    （视口 `opacity-0 pointer-events-none`），所以音频照常播放，频谱 / 唱片 / 歌词 / 控制胶囊全部不渲染
+    （视口 `opacity-0 pointer-events-none`），所以音频照常播放，频谱 / 唱片 / 歌词 / 控制胶囊全部不渲染。折叠胶囊的
+    44px 徽标只有 `coverLoaded` 时才显示封面，否则渲染 SVG 黑胶同心圆 + 中心 spindle 孔，播放时随 `.vinyl-spin` 旋转。
     （控制胶囊包在 `{!compactCollapsed && ...}` 里）。折叠态的音量按钮点击后弹出同一音量面板，面板挂在胶囊下方而不是
     展开播放器；展开状态持久在 `localStorage('fastmusic_player_expanded')`
     （默认窄屏折叠、桌面展开），全屏时始终展开。折叠胶囊的时间先显示、歌手名溢出截断。
