@@ -683,7 +683,6 @@ export default function App() {
           <RadioStationBanner
             isRadioMode={isRadioMode}
             activeChannel={radioChannel}
-            currentTrack={currentTrack}
             frequency={radioFrequency}
             onSwitchChannel={handleSwitchRadioChannel}
             onNextRandom={handleNextRadioTrack}

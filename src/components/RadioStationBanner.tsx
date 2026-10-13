@@ -7,13 +7,12 @@ import {
   SkipForward,
   X
 } from 'lucide-react';
-import { MediaItem, RadioChannel } from '../types/media';
+import { RadioChannel } from '../types/media';
 import { t } from '../utils/i18n';
 
 interface RadioStationBannerProps {
   isRadioMode: boolean;
   activeChannel: RadioChannel;
-  currentTrack: MediaItem | null;
   frequency: string;
   onSwitchChannel: (channel: RadioChannel) => void;
   onNextRandom: () => void;
@@ -31,7 +30,6 @@ const CHANNELS: Array<{ channel: RadioChannel; icon: typeof Shuffle; label: stri
 export const RadioStationBanner: React.FC<RadioStationBannerProps> = ({
   isRadioMode,
   activeChannel,
-  currentTrack,
   frequency,
   onSwitchChannel,
   onNextRandom,
@@ -52,7 +50,7 @@ export const RadioStationBanner: React.FC<RadioStationBannerProps> = ({
       <div className="absolute -top-12 -right-12 w-48 h-48 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-purple/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Station branding + frequency + what is playing — 一行 */}
+      {/* Station branding + frequency — 一行 (歌名由下方播放器显示, 这里不重复) */}
       <div className="relative z-10 flex items-center gap-2 min-w-0 flex-1">
         <div className="relative w-8 h-8 rounded-lg bg-gradient-to-tr from-accent to-amber flex items-center justify-center text-white shadow-md shadow-accent/40 shrink-0">
           <Radio className="w-4 h-4 animate-pulse" />
@@ -62,17 +60,12 @@ export const RadioStationBanner: React.FC<RadioStationBannerProps> = ({
           </span>
         </div>
 
-        <span className="hidden sm:inline text-[11px] font-bold tracking-wider uppercase text-accent font-mono whitespace-nowrap">
-          FastMusic FM · {freq}
+        <span className="text-[11px] font-bold tracking-wider uppercase text-accent font-mono whitespace-nowrap">
+          <span className="hidden sm:inline">FastMusic FM · </span>{freq}
         </span>
         <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-accent/20 text-accent-soft border border-accent/30">
           {isPlaying ? t('LIVE 随心广播') : t('随心电台正在漫游')}
         </span>
-        {currentTrack && (
-          <span className="text-xs text-ink-3 font-mono truncate min-w-0 flex-1" title={currentTrack.title}>
-            &bull; {currentTrack.title}
-          </span>
-        )}
       </div>
 
       {/* Channel switcher — icon only */}
