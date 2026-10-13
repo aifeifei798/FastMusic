@@ -28,8 +28,8 @@ Client SPA flow: `index.html` → `/src/main.tsx` → `src/App.tsx` (central UI 
 playback/library state). UI pieces live in `src/components/`.
 
 - **Audio graph is owned by `VideoJsPlayer.tsx`**, not the visualizer: the player wires
-  `source → 10 peaking BiquadFilters (均衡器) → boostGain (×2 音量增强, localStorage
-  'fastmusic_boost') → analyser → destination` and publishes the
+  `source → 10 peaking BiquadFilters (均衡器) → boostGain (×2 音量增强, **默认开启**, localStorage
+  'fastmusic_boost' — 没有记录时视为开启，只有显式关闭过才存 '0') → analyser → destination` and publishes the
   analyser on `window._fastMusicAnalyser`. Default player volume is 70%. `AudioVisualizer.tsx` is a **pure consumer** — it
   reads `window._fastMusicAnalyser` fresh each render frame and never connects the media
   source (so it can't clobber the EQ path). Shared globals: `window._fastMusicAudioContext`,
@@ -282,7 +282,8 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   - **控制胶囊**: 窄屏 secondary row 是单行 `flex-wrap`（没有 `justify-between`），右侧控件组用 inline
     `style={{ display: 'contents' }}` 摊平（Tailwind 的 `contents` utility 实测不生效）。上一首/下一首 `p-2.5`
     (≥36px 触摸目标)，进度条 `h-5`，时间文本省略（折叠胶囊/进度条已有时间）。**×2 音量增强、倍速菜单、剧场模式
-    只在桌面**；窄屏多一个 ChevronUp「收起播放器」按钮（必须 `isCompact &&` 条件，桌面没有折叠态）。胶囊高约 124px，
+    只在桌面胶囊里**（窄屏的 ×2 开关在均衡器面板 header 中，`isCompact &&` 条件）；窄屏多一个 ChevronUp
+    「收起播放器」按钮（必须 `isCompact &&` 条件，桌面没有折叠态）。胶囊高约 124px，
     `bottom: max(12px, env(safe-area-inset-bottom))`（inline style，iOS 安全区）。均衡器面板窄屏是全宽 bottom sheet
     (`left-2 right-2 bottom-[140px]`)，歌词样式面板是顶部 sheet (`top-2 left-2 right-2`)；两个面板 `bg-app/95`。
   - **页头 / 页脚 / 工具栏**: 页头窄屏只留 电台 / 收藏 / 主题 / 系统配置，历史 / 快捷键 / 语言是 `hidden sm:block`

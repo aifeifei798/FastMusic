@@ -174,12 +174,14 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   const [bufferedEnd, setBufferedEnd] = useState<number>(0);
   const [volume, setVolume] = useState<number>(0.7); // 默认音量 70%
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  // 音量增强 ×2: video.js 音量上限是 1, 增强靠音频图里的 GainNode 实现
+  // 音量增强 ×2: video.js 音量上限是 1, 增强靠音频图里的 GainNode 实现。
+  // 默认开启（没有 localStorage 记录时视为开启），只有用户显式关闭过才保持关闭。
   const [volumeBoost, setVolumeBoost] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('fastmusic_boost') === '1';
+      const saved = localStorage.getItem('fastmusic_boost');
+      return saved === null ? true : saved === '1';
     } catch {
-      return false;
+      return true;
     }
   });
   const [playbackRate, setPlaybackRate] = useState<number>(1);
@@ -1546,6 +1548,18 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               {t('均衡器 · {state} · {preset}', { state: eqEnabled ? 'ON' : 'OFF', preset: eqPreset === 'manual' ? t('手动') : t(EQ_PRESETS.find((p) => p.name === eqPreset)?.label || '平') })}
             </span>
             <div className="flex items-center gap-1">
+              {/* 窄屏控制胶囊装不下 ×2 按钮，所以在均衡器面板里提供开关 */}
+              {isCompact && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleVolumeBoost(); }}
+                  title={volumeBoost ? t('音量增强 ×2 (已开启, 点击关闭)') : t('音量增强 ×2 (音乐增强)')}
+                  className={`p-1 rounded-md text-2xs font-bold transition-colors ${
+                    volumeBoost ? 'bg-accent text-white' : 'bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink'
+                  }`}
+                >
+                  ×2
+                </button>
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); toggleEqEnabled(); }}
                 title={t('均衡器 开/关')}
