@@ -266,6 +266,35 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   reintroduce `min-h-screen`, unbounded list height, or an IntersectionObserver here.
   播放器下方没有「正在播放」信息行（歌名/歌手/专辑在舞台左列，收藏按钮在控制胶囊里，格式与转码状态在
   列表行里），省下的高度全部给 `flex-1` 的库区；不要把它加回来。
+- **窄屏（<768px）手机布局**: `src/utils/responsive.ts` 的 `useIsCompact()`（`matchMedia('(max-width:767px)')`，
+  `COMPACT_BREAKPOINT = 768`）驱动**结构性**变化 —— Tailwind 断点只能改样式，不能改结构，所以折叠播放器 /
+  菜单 / sheet 这类变化必须走 JS。`App.tsx` 把 `isCompact` 传给 `VideoJsPlayer` 与 `LibraryView`（两者都有
+  `isCompact?: boolean` 参数，默认 false）。实测 360×640：页头 57px + 折叠播放器 92px + 工具栏 38px + 列表 346px（10 行）。
+  - **播放器折叠**: `compactCollapsed = isCompact && !expanded && !isFullscreen`，根容器 `h-[92px]`，只渲染一条
+    「正在播放」胶囊（44px mini 唱片 + 标题/时间 + 上一首/播放/下一首 + 展开按钮）；`<video>` 仍在 DOM 里
+    （视口 `opacity-0 pointer-events-none`），所以音频照常播放，频谱 / 唱片 / 歌词 / 控制胶囊全部不渲染
+    （控制胶囊包在 `{!compactCollapsed && ...}` 里）。展开状态持久在 `localStorage('fastmusic_player_expanded')`
+    （默认窄屏折叠、桌面展开），全屏时始终展开。折叠胶囊的时间先显示、歌手名溢出截断。
+  - **展开态高度** `clamp(260px,calc(100vh-300px),420px)`；音频舞台网格 `120px 1fr` + 行 `1fr 62px`
+    （唱片左列 `col-start-1 row-start-1 h-full`，信息列 `col-start-2` 左对齐，歌词横向带 `col-span-2`），
+    `paddingBottom` 140px（有歌词）/ 124px（无歌词）给控制胶囊留空间。窄屏唱片高度 inline style `min(100%,120px)`。
+    视频时歌词列宽 `max(140, min(lyricWidth, stage*0.34))`（桌面是 200 / 0.26）。
+  - **控制胶囊**: 窄屏 secondary row 是单行 `flex-wrap`（没有 `justify-between`），右侧控件组用 inline
+    `style={{ display: 'contents' }}` 摊平（Tailwind 的 `contents` utility 实测不生效）。上一首/下一首 `p-2.5`
+    (≥36px 触摸目标)，进度条 `h-5`，时间文本省略（折叠胶囊/进度条已有时间）。**×2 音量增强、倍速菜单、剧场模式
+    只在桌面**；窄屏多一个 ChevronUp「收起播放器」按钮（必须 `isCompact &&` 条件，桌面没有折叠态）。胶囊高约 124px，
+    `bottom: max(12px, env(safe-area-inset-bottom))`（inline style，iOS 安全区）。均衡器面板窄屏是全宽 bottom sheet
+    (`left-2 right-2 bottom-[140px]`)，歌词样式面板是顶部 sheet (`top-2 left-2 right-2`)；两个面板 `bg-app/95`。
+  - **页头 / 页脚 / 工具栏**: 页头窄屏只留 电台 / 收藏 / 主题 / 系统配置，历史 / 快捷键 / 语言是 `hidden sm:block`
+    并收进「更多」菜单（`MoreHorizontal`，`moreMenuOpen` + `moreMenuRef`，外部点击或 Esc 关闭，面板
+    `absolute top-full right-0 w-[220px]`，`sm:hidden`）。页脚窄屏 `hidden sm:block`。`main` 的 padding 窄屏
+    `px-3 py-3`。工具栏一行装下 tabs + 搜索 + 筛选菜单：媒体类型切换窄屏收进「筛选与工具」菜单（当前生效类型
+    用小图标在按钮上表示），tabs 按钮 `p-1.5`，搜索框 `min-w-[96px]`（桌面 120px），否则刚好超过一行会换行。
+    行密度窄屏默认 `compact`（`localStorage('fastmusic_density')` 有值时尊重用户选择）。字母索引的「字母索引:」
+    label 窄屏隐藏，chip `py-1`；歌手/专辑卡片 `gap-2` + `p-3` + 16px 头像。
+  - **手势切歌**: 播放视口和列表行 `onTouchStart/onTouchEnd`，`|dx| > 60` → 左滑下一首 / 右滑上一首。只记录
+    touchStart 起点（touchMove 不更新，否则 delta 被最后一段位移稀释）。坑：浏览器在 touchend 后仍会在滑动终点
+    触发 click，`LibraryView` 的 `rowSwipeHandledRef` 吞掉它，否则「滑动 + 点击」双重动作（滑一次等于切两首）。
 - **Artists / Albums tabs batch-render**: all 6k artists / 15k albums are fetched at startup, but the grid only
   renders the first `artistLimit` / `albumLimit` cards (start 120, +120 when the grid scroll box nears the bottom
   via `handleGridScroll` + `gridBoxRef`), plus a 加载更多 button. The A-Z letter index and the toolbar search box

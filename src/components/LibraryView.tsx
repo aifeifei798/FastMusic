@@ -63,6 +63,10 @@ interface LibraryViewProps {
   onToggleFavorite?: (track: MediaItem) => void;
   activeTab?: 'tracks' | 'artists' | 'albums' | 'favorites';
   onTabChange?: (tab: 'tracks' | 'artists' | 'albums' | 'favorites') => void;
+  // 窄屏（<768px）布局：工具栏一行化、卡片两列、行左右滑动切歌
+  isCompact?: boolean;
+  onPrevTrack?: () => void;
+  onNextTrack?: () => void;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
@@ -98,6 +102,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onToggleFavorite,
   activeTab: propActiveTab,
   onTabChange,
+  isCompact = false,
+  onPrevTrack,
+  onNextTrack,
 }) => {
   const [internalTab, setInternalTab] = useState<'tracks' | 'artists' | 'albums' | 'favorites'>('tracks');
   const activeTab = propActiveTab !== undefined ? propActiveTab : internalTab;
@@ -372,17 +379,34 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   const alphabet = ['ALL', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
 
+  // 窄屏手势: 列表行左右滑动切歌（左滑下一首，右滑上一首）。
+  // 只记录 touchStart 的起点，touchMove 不更新，否则 delta 会被最后一段位移稀释。
+  const rowSwipeRef = useRef<{ x: number; y: number } | null>(null);
+  // 浏览器在 touchend 后仍会在滑动终点触发 click，用这个标记吞掉它，避免"滑动 + 点击"双重动作
+  const rowSwipeHandledRef = useRef(false);
+  const handleRowSwipeEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    const start = rowSwipeRef.current;
+    rowSwipeRef.current = null;
+    if (!start) return;
+    const dx = e.changedTouches[0].clientX - start.x;
+    if (Math.abs(dx) < 60) return;
+    rowSwipeHandledRef.current = true;
+    if (dx < 0) onNextTrack?.();
+    else onPrevTrack?.();
+  };
+
   return (
     <div className="w-full flex-1 min-h-0 flex flex-col gap-4">
-      {/* Search & Top Action Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+      {/* 工具栏: 窄屏一行装下 tabs + 搜索 + 筛选菜单（媒体类型收进菜单），
+          桌面仍是 tabs / 搜索 / 类型 / 菜单 同一行 */}
+      <div className="flex flex-wrap items-center gap-2">
         {/* Navigation Tabs — 图标-only（文字在手机上会把工具栏挤成多行），数量在 title 里 */}
         <div className="flex items-center gap-1 p-1 bg-surface rounded-xl border border-line shrink-0">
           <button
             onClick={() => setActiveTab('tracks')}
             title={t('曲目 {loaded}/{total}', { loaded: fmtNum(tracks.length), total: fmtNum(totalTracks) })}
             aria-label={t('曲目')}
-            className={`p-2 rounded-lg transition-colors ${
+            className={`${isCompact ? 'p-1.5' : 'p-2'} rounded-lg transition-colors ${
               activeTab === 'tracks'
                 ? 'bg-surface-2 text-ink shadow-sm'
                 : 'text-muted hover:text-ink-2'
@@ -394,7 +418,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             onClick={() => setActiveTab('artists')}
             title={t('歌手 {n}', { n: fmtNum(artists.length) })}
             aria-label={t('歌手')}
-            className={`p-2 rounded-lg transition-colors ${
+            className={`${isCompact ? 'p-1.5' : 'p-2'} rounded-lg transition-colors ${
               activeTab === 'artists'
                 ? 'bg-surface-2 text-ink shadow-sm'
                 : 'text-muted hover:text-ink-2'
@@ -406,7 +430,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             onClick={() => setActiveTab('albums')}
             title={t('专辑 {n}', { n: fmtNum(albums.length) })}
             aria-label={t('专辑')}
-            className={`p-2 rounded-lg transition-colors ${
+            className={`${isCompact ? 'p-1.5' : 'p-2'} rounded-lg transition-colors ${
               activeTab === 'albums'
                 ? 'bg-surface-2 text-ink shadow-sm'
                 : 'text-muted hover:text-ink-2'
@@ -418,7 +442,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             onClick={() => setActiveTab('favorites')}
             title={t('收藏 {n}', { n: fmtNum(favorites.length) })}
             aria-label={t('收藏')}
-            className={`p-2 rounded-lg transition-colors ${
+            className={`${isCompact ? 'p-1.5' : 'p-2'} rounded-lg transition-colors ${
               activeTab === 'favorites'
                 ? 'bg-surface-2 text-accent-soft shadow-sm border border-accent/30'
                 : 'text-muted hover:text-accent-soft'
@@ -430,8 +454,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
         {/* Search & Filter — 允许换行, 窄屏不至于挤成一条溢出 */}
         <div className="flex items-center gap-2 flex-1 justify-end flex-wrap">
-          {/* Search box — 占据剩余宽度，搜索框更长更容易读长查询 */}
-          <div className="relative flex-1 min-w-[220px]">
+          {/* Search box — 占据剩余宽度，搜索框更长更容易读长查询。窄屏下限更小，
+              否则 tabs + 搜索 + 筛选按钮刚好超过一行会换行 */}
+          <div className={`relative flex-1 ${isCompact ? 'min-w-[96px]' : 'min-w-[120px]'}`}>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-2" />
             <input
               type="text"
@@ -455,13 +480,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <span className="text-[11px] font-mono text-muted-2 shrink-0">{t('命中 {n}', { n: totalTracks })}</span>
           )}
 
-          {/* Media Type Toggle — 图标-only（全部 / MTV / 音乐），文字在 title 里 */}
+          {/* Media Type Toggle — 图标-only（全部 / MTV / 音乐），文字在 title 里。
+              窄屏收进「筛选与工具」菜单，保证工具栏一行装下 */}
+          {!isCompact && (
           <div className="flex items-center gap-1 p-1 bg-surface rounded-xl border border-line shrink-0">
             <button
               onClick={() => onFilterMediaType('all')}
               title={t('全部类型')}
               aria-label={t('全部')}
-              className={`p-2 rounded-lg transition-colors ${
+              className={`${isCompact ? 'p-1.5' : 'p-2'} rounded-lg transition-colors ${
                 mediaTypeFilter === 'all'
                   ? 'bg-surface-2 text-ink'
                   : 'text-muted hover:text-ink'
@@ -473,7 +500,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               onClick={() => onFilterMediaType('video')}
               title={t('只看 MTV / 视频')}
               aria-label="MTV"
-              className={`p-2 rounded-lg transition-colors ${
+              className={`${isCompact ? 'p-1.5' : 'p-2'} rounded-lg transition-colors ${
                 mediaTypeFilter === 'video'
                   ? 'bg-accent-dim/80 text-accent-soft border border-accent-dim/60'
                   : 'text-muted hover:text-ink'
@@ -485,7 +512,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               onClick={() => onFilterMediaType('audio')}
               title={t('只看音乐 / 音频')}
               aria-label={t('音乐')}
-              className={`p-2 rounded-lg transition-colors ${
+              className={`${isCompact ? 'p-1.5' : 'p-2'} rounded-lg transition-colors ${
                 mediaTypeFilter === 'audio'
                   ? 'bg-accent-dim/80 text-accent-soft border border-accent-dim/60'
                   : 'text-muted hover:text-ink'
@@ -494,6 +521,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <Music className="w-4 h-4" />
             </button>
           </div>
+          )}
 
           {/* 「筛选与工具」下拉：只看已转码 / 只看有歌词 / 预取封面 / 预取歌词 / 行密度
               收进一个菜单，工具栏不再换行（窄屏尤其重要） */}
@@ -502,13 +530,20 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               onClick={() => setToolMenuOpen((v) => !v)}
               title={t('筛选与工具：只看已转码 / 只看有歌词 / 预取封面 / 预取歌词 / 行密度')}
               aria-label={t('筛选与工具')}
-              className={`p-2 rounded-lg border transition-colors flex items-center gap-1.5 ${
+              className={`rounded-lg border transition-colors flex items-center gap-1.5 ${
+                isCompact ? 'p-1.5' : 'p-2'
+              } ${
                 toolMenuOpen
                   ? 'bg-surface-2 text-ink border-line-strong'
                   : 'bg-surface text-muted border-line hover:text-ink'
               }`}
             >
               <SlidersHorizontal className="w-4 h-4" />
+              {isCompact && mediaTypeFilter !== 'all' && (
+                <span title={mediaTypeFilter === 'video' ? t('只看 MTV / 视频') : t('只看音乐 / 音频')} className="flex items-center">
+                  {mediaTypeFilter === 'video' ? <Film className="w-3.5 h-3.5 text-accent-soft" /> : <Music className="w-3.5 h-3.5 text-accent-soft" />}
+                </span>
+              )}
               {(readyOnly || hasLyricsOnly) && (
                 <span className="flex items-center gap-1">
                   {readyOnly && (
@@ -528,6 +563,39 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
             {toolMenuOpen && (
               <div className="absolute top-full right-0 z-40 mt-2 w-[360px] max-w-[92vw] p-3 rounded-xl bg-surface border border-line shadow-xl shadow-black/60">
+                {/* 窄屏: 媒体类型收进菜单（工具栏一行装不下 tabs + 搜索 + 类型 + 菜单） */}
+                {isCompact && (
+                  <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                    <span className="text-[11px] text-muted-2">{t('媒体类型')}</span>
+                    <button
+                      onClick={() => onFilterMediaType('all')}
+                      className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
+                        mediaTypeFilter === 'all' ? 'bg-surface-2 text-ink border-line-strong' : 'bg-surface text-muted border-line hover:text-ink'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>{t('全部')}</span>
+                    </button>
+                    <button
+                      onClick={() => onFilterMediaType('video')}
+                      className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
+                        mediaTypeFilter === 'video' ? 'bg-accent-dim/80 text-accent-soft border-accent-dim/60' : 'bg-surface text-muted border-line hover:text-ink'
+                      }`}
+                    >
+                      <Film className="w-3.5 h-3.5" />
+                      <span>{t('MTV')}</span>
+                    </button>
+                    <button
+                      onClick={() => onFilterMediaType('audio')}
+                      className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors flex items-center gap-1.5 ${
+                        mediaTypeFilter === 'audio' ? 'bg-accent-dim/80 text-accent-soft border-accent-dim/60' : 'bg-surface text-muted border-line hover:text-ink'
+                      }`}
+                    >
+                      <Music className="w-3.5 h-3.5" />
+                      <span>{t('音乐')}</span>
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 flex-wrap">
                   {onToggleReadyOnly && (
                     <button
@@ -634,12 +702,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       {/* A-Z Alphabet quick navigation for Artists / Albums */}
       {(activeTab === 'artists' || activeTab === 'albums') && (
         <div className={`flex items-center gap-1 overflow-x-auto py-1 px-2 bg-surface/40 rounded-xl border border-line/80 ${NO_SCROLLBAR_CLASSES}`}>
-          <span className="text-[11px] text-muted-2 px-1 font-mono">{t('字母索引:')}</span>
+          <span className="hidden sm:inline text-[11px] text-muted-2 px-1 font-mono">{t('字母索引:')}</span>
           {alphabet.map((char) => (
             <button
               key={char}
               onClick={() => setLetterFilter(char)}
-              className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors shrink-0 ${
+              className={`px-2 ${isCompact ? 'py-1' : 'py-0.5'} rounded text-[11px] font-mono transition-colors shrink-0 ${
                 letterFilter === char
                   ? 'bg-accent text-white font-bold'
                   : 'text-muted hover:text-ink hover:bg-surface-2'
@@ -742,7 +810,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           ? 'bg-accent-dim/20 hover:bg-accent-dim/35 text-ink border-l-2 border-l-accent/80 shadow-inner'
                           : 'hover:bg-surface-2/50 text-ink-3'
                       }`}
-                      onClick={() => onSelectTrack(track)}
+                      onClick={() => {
+                        if (rowSwipeHandledRef.current) { rowSwipeHandledRef.current = false; return; }
+                        onSelectTrack(track);
+                      }}
+                      onTouchStart={(e) => { rowSwipeRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+                      onTouchEnd={handleRowSwipeEnd}
                     >
                       {/* Index / Play icon */}
                       <div className="col-span-2 sm:col-span-1 flex items-center justify-center">
@@ -940,7 +1013,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             onScroll={handleGridScroll}
             className={`overflow-y-auto flex-1 min-h-[140px] ${SCROLLBAR_CLASSES}`}
           >
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 ${isCompact ? 'gap-2' : 'gap-4'}`}>
               {filteredArtists.slice(0, artistLimit).map((artist) => (
                 <div
                   key={t(artist.artist_name)}
@@ -948,9 +1021,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     onFilterArtist(artist.artist_name);
                     setActiveTab('tracks');
                   }}
-                  className="p-4 rounded-2xl bg-surface/60 border border-line/80 hover:border-accent/50 hover:bg-surface-2/40 transition-all cursor-pointer group flex flex-col items-center text-center"
+                  className={`${isCompact ? 'p-3' : 'p-4'} rounded-2xl bg-surface/60 border border-line/80 hover:border-accent/50 hover:bg-surface-2/40 transition-all cursor-pointer group flex flex-col items-center text-center`}
                 >
-                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-surface-2 border-2 border-line-strong group-hover:border-accent/80 transition-colors shadow-lg mb-3 flex items-center justify-center">
+                  <div className={`${isCompact ? 'w-16 h-16 mb-2' : 'w-20 h-20 sm:w-24 sm:h-24 mb-3'} rounded-full overflow-hidden bg-surface-2 border-2 border-line-strong group-hover:border-accent/80 transition-colors shadow-lg flex items-center justify-center`}>
                     {entityCover(artist) ? (
                       <img
                         src={entityCover(artist)}
@@ -1008,7 +1081,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             onScroll={handleGridScroll}
             className={`overflow-y-auto flex-1 min-h-[140px] ${SCROLLBAR_CLASSES}`}
           >
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 ${isCompact ? 'gap-2' : 'gap-4'}`}>
               {filteredAlbums.slice(0, albumLimit).map((album) => (
                 <div
                   key={`${t(album.artist_name)}-${t(album.album_name)}`}
@@ -1100,7 +1173,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           ? 'bg-accent-dim/40 text-accent-soft font-medium border-l-2 border-l-accent'
                           : 'bg-accent-dim/15 hover:bg-accent-dim/30 text-ink border-l-2 border-l-accent/80 shadow-inner'
                       }`}
-                      onClick={() => onSelectTrack(track)}
+                      onClick={() => {
+                        if (rowSwipeHandledRef.current) { rowSwipeHandledRef.current = false; return; }
+                        onSelectTrack(track);
+                      }}
+                      onTouchStart={(e) => { rowSwipeRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+                      onTouchEnd={handleRowSwipeEnd}
                     >
                       {/* Index / Play icon */}
                       <div className="col-span-2 sm:col-span-1 flex items-center justify-center">

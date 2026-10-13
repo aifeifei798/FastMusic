@@ -26,7 +26,9 @@ import {
   AlertTriangle,
   CheckCircle2,
   Captions,
-  EyeOff
+  EyeOff,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { MediaItem, PlayMode, TranscodeStatus } from '../types/media';
 import { AudioVisualizer, VisualizerMode } from './AudioVisualizer';
@@ -133,6 +135,8 @@ interface VideoJsPlayerProps {
   onToggleTheater: () => void;
   isFavorited?: boolean;
   onToggleFavorite?: () => void;
+  // 窄屏（<768px）布局：播放器默认折叠成一条"正在播放"胶囊，把垂直空间还给列表
+  isCompact?: boolean;
 }
 
 export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
@@ -146,10 +150,13 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   onToggleTheater,
   isFavorited = false,
   onToggleFavorite,
+  isCompact = false,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerRef = useRef<Player | null>(null);
+  // 窄屏手势（视口左右滑动切歌）的起点
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   // The init useEffect (deps []) closes over the FIRST onNext; App recreates handleNextTrack
   // every render with fresh currentIndex/playMode, so the ended handler must call the LATEST one.
   const onNextRef = useRef(onNext);
@@ -182,6 +189,23 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   const [hoverPosition, setHoverPosition] = useState<number>(0);
   const [showControls, setShowControls] = useState<boolean>(true);
   const [showSpeedMenu, setShowSpeedMenu] = useState<boolean>(false);
+
+  // 窄屏(<768px)时播放器默认折叠成一条"正在播放"胶囊，把垂直空间还给列表；
+  // 展开/收起状态持久化，全屏时始终展开。
+  const [expanded, setExpanded] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('fastmusic_player_expanded');
+      if (saved !== null) return saved === '1';
+    } catch {}
+    return typeof window === 'undefined' || window.innerWidth >= 768;
+  });
+  const setPlayerExpanded = (value: boolean) => {
+    setExpanded(value);
+    try { localStorage.setItem('fastmusic_player_expanded', value ? '1' : '0'); } catch {}
+  };
+  // 窄屏折叠态：播放器收成一条"正在播放"胶囊（频谱/唱片/歌词都不渲染），
+  // 把垂直空间还给列表。全屏时始终展开。
+  const compactCollapsed = isCompact && !expanded && !isFullscreen;
 
   // 是否当前媒体真正有视频轨（浏览器解码权威判断，而非文件扩展猜测）。
   // 关键：.webm 是视频容器但 youtube-music 音频也用 .webm，扩展无法区分，
@@ -355,7 +379,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   const effectiveLyricWidth = (() => {
     const c = containerRef.current;
     const stage = c ? c.getBoundingClientRect().width - lyricRightInset : lyricWidth;
-    return Math.max(200, Math.min(lyricWidth, Math.round(stage * 0.26)));
+    // 窄屏舞台只有 ~330px: 200px 的歌词列会吃掉 60% 的画面，所以下限更低、封顶更严
+    const min = isCompact ? 140 : 200;
+    const cap = isCompact ? 0.34 : 0.26;
+    return Math.max(min, Math.min(lyricWidth, Math.round(stage * cap)));
   })();
   const [showLyricSettings, setShowLyricSettings] = useState<boolean>(false);
 
@@ -1003,10 +1030,76 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       // 浏览器按指针下方最上层元素解析 cursor, 只给视口 div 加 cursor-none 时这些区域仍显示指针。
       // cursor 是继承属性, 根容器设 cursor-none 后 video.js 的 wrapper/<video> 也继承。
       className={`relative w-full bg-app flex flex-col justify-between overflow-hidden transition-all duration-300 [&_.vjs-custom-theme]:font-[inherit]! [&_.vjs-custom-theme]:bg-transparent! [&_.vjs-custom-theme]:w-full! [&_.vjs-custom-theme]:h-full! [&_.vjs-custom-theme_.vjs-tech]:object-contain! [&_.video-js:focus]:outline-none! ${
-        isFullscreen ? 'h-screen w-screen' : isTheaterMode ? 'h-[clamp(300px,calc(100vh-300px),580px)] rounded-2xl border border-line shadow-2xl' : 'h-[clamp(240px,calc(100vh-420px),440px)] rounded-2xl border border-line/80 shadow-xl'
+        isFullscreen ? 'h-screen w-screen' : compactCollapsed ? 'h-[92px] rounded-xl border border-line/80 shadow-lg' : isCompact ? 'h-[clamp(260px,calc(100vh-300px),420px)] rounded-2xl border border-line/80 shadow-xl' : isTheaterMode ? 'h-[clamp(300px,calc(100vh-300px),580px)] rounded-2xl border border-line shadow-2xl' : 'h-[clamp(240px,calc(100vh-420px),440px)] rounded-2xl border border-line/80 shadow-xl'
       } ${isFullscreen && isVideo && !showControls ? 'cursor-none' : ''}`}
     >
+      {/* 窄屏折叠态: 一条"正在播放"胶囊（封面 + 标题/歌手 + 上一首/播放/下一首 + 展开）。
+          <video> 仍在 DOM 里（视口只是 opacity-0），所以音频照常播放。 */}
+      {compactCollapsed && (
+        <div className="flex items-center gap-2.5 px-3 py-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="relative w-11 h-11 rounded-full bg-vinyl border-2 border-line-strong/70 flex items-center justify-center overflow-hidden shrink-0">
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt={currentTrack?.title || ''}
+                referrerPolicy="no-referrer"
+                className={`w-full h-full rounded-full object-cover ${isPlaying ? 'animate-[spin_14s_linear_infinite]' : ''}`}
+              />
+            ) : (
+              <Music className="w-4 h-4 text-muted" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-ink">
+              {currentTrack ? currentTrack.title : t('未选择曲目')}
+            </div>
+            <div className="truncate text-[11px] text-muted mt-0.5 flex items-center gap-1.5">
+              {/* 时间比歌手名更重要：窄屏先显示时间，歌手名溢出时截断 */}
+              <span className="font-mono tabular-nums text-muted-2 shrink-0">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
+              {currentTrack && <span className="truncate">{t(currentTrack.artist || '未知歌手')}</span>}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={onPrev}
+              title={t('上一首 (K)')}
+              aria-label={t('上一首')}
+              className="p-2 rounded-lg text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
+            >
+              <SkipBack className="w-4 h-4" />
+            </button>
+            <button
+              onClick={togglePlay}
+              title={isPlaying ? t('暂停') : t('播放')}
+              aria-label={isPlaying ? t('暂停') : t('播放')}
+              className="w-9 h-9 rounded-full bg-accent text-white flex items-center justify-center shadow-md transition-transform hover:scale-105"
+            >
+              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+            </button>
+            <button
+              onClick={onNext}
+              title={t('下一首 (J)')}
+              aria-label={t('下一首')}
+              className="p-2 rounded-lg text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
+            >
+              <SkipForward className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setPlayerExpanded(true)}
+              title={t('展开播放器')}
+              aria-label={t('展开播放器')}
+              className="p-2 rounded-lg text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
+            >
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Overlay Badge & Header Info */}
+      {!compactCollapsed && (
       <div
         className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-app/80 via-app/40 to-transparent transition-opacity duration-300 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
@@ -1098,6 +1191,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           )}
         </div>
       </div>
+      )}
 
       {/* Main Media Viewport */}
       <div 
@@ -1106,8 +1200,18 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         // 浅色主题下用舞台色, 让"无频谱"时舞台也是浅色而不是一块黑。
         className={`relative flex-1 w-full h-full flex items-center justify-center ${isVideo ? 'bg-viewport' : 'bg-stage'} overflow-hidden ${
           isFullscreen && isVideo && !showControls ? 'cursor-none' : 'cursor-pointer'
-        }`}
+        } ${compactCollapsed ? 'opacity-0 pointer-events-none' : ''}`}
         onClick={togglePlay}
+        // 窄屏手势: 视口上左右滑动切歌（滑动不会触发 click，所以不会误切播放状态）。
+        // 只记录 touchStart 起点，touchMove 不更新，否则 delta 会被最后一段位移稀释。
+        onTouchStart={(e) => { swipeStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+        onTouchEnd={(e) => {
+          const start = swipeStartRef.current;
+          swipeStartRef.current = null;
+          if (!start) return;
+          const dx = e.changedTouches[0].clientX - start.x;
+          if (Math.abs(dx) > 60) { if (dx < 0) onNext(); else onPrev(); }
+        }}
       >
         {/* The Video.js underlying element.
             注意: video.js 初始化时会把这些类复制到它自动创建的 wrapper div, 且 wrapper 的类
@@ -1144,7 +1248,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         )}
 
         {/* Audio Visualizer (rendered when media is audio; '无' 模式不渲染, 舞台保持纯黑) */}
-        {!isVideo && currentTrack && visualizerMode !== 'none' && (
+        {!isVideo && currentTrack && visualizerMode !== 'none' && !compactCollapsed && (
           <div className="absolute inset-0 z-10 w-full h-full">
             <AudioVisualizer
               isPlaying={isPlaying}
@@ -1166,14 +1270,16 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
       {/* 舞台布局 — 音频: 三列网格(左 = 歌名/歌手, 中 = 唱片留空区, 右 = 歌词竖列)。
           视频(MTV): 画面本身就是主角, 左侧信息列与唱片留空区都不渲染, 只保留右侧歌词竖列。
-          中间列固定宽度且居中，所以唱片不会被文字压住；pointer-events-none 不干扰点击播放/控制栏 */}
-      {currentTrack && (
+          中间列固定宽度且居中，所以唱片不会被文字压住；pointer-events-none 不干扰点击播放/控制栏
+          窄屏音频: 唱片在左(120px), 信息在右, 歌词变成下方一条横向带(三列结构在 330px 舞台里
+          会把标题挤成每行一个字) */}
+      {currentTrack && !compactCollapsed && (
         <div
           className={`absolute inset-0 z-[15] pointer-events-none grid gap-4 px-5 sm:px-7 ${
-            isVideo ? '' : 'grid-cols-[1fr_240px_1fr]'
+            isVideo || isCompact ? '' : 'grid-cols-[1fr_240px_1fr]'
           }`}
           style={{
-            gridTemplateRows: '1fr',
+            gridTemplateRows: isCompact && !isVideo && showLyrics ? '1fr 62px' : '1fr',
             // 视频时右列贴紧画面右边缘: 覆盖 px-5 sm:px-7 的右内边距。
             // 列宽必须用 inline style —— Tailwind 的 arbitrary class 是静态扫描生成的,
             // 带运行时插值的 `grid-cols-[1fr_${n}px]` 不会生成任何 CSS 规则。
@@ -1182,7 +1288,13 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 gridTemplateColumns: `1fr ${effectiveLyricWidth}px`,
                 paddingRight: `${lyricRightInset}px`,
               }
-              : {}),
+              : isCompact
+                ? {
+                  gridTemplateColumns: '120px 1fr',
+                  // 控制胶囊悬浮在底部(窄屏两行 ≈ 124px + bottom 12)，歌词带要避开它
+                  paddingBottom: showLyrics ? '140px' : '124px',
+                }
+                : {}),
           }}
           title={
             lyricMatch
@@ -1190,9 +1302,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               : ''
           }
         >
-          {/* 左列: 正在播放的曲目信息 (仅音频曲目; min-h-0 让 grid 的 1fr 行不被内容撑高) */}
+          {/* 音频曲目信息: 桌面在左列(右对齐), 窄屏在唱片右侧(左对齐) */}
           {!isVideo && (
-            <div className="min-w-0 min-h-0 flex flex-col justify-center gap-1.5 text-right pr-3">
+            <div className={`min-w-0 min-h-0 flex flex-col justify-center gap-1.5 ${isCompact ? 'text-left col-start-2' : 'text-right pr-3'}`}>
               <span className="text-[10px] uppercase tracking-[0.22em] text-muted-2">{t('正在播放')}</span>
               <h2 className="text-lg sm:text-xl font-bold leading-tight text-ink break-words drop-shadow-md">
                 {currentTrack.title}
@@ -1209,13 +1321,16 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               (本地内嵌 → iTunes → 网易云)。频谱选"无"时 AudioVisualizer 不挂载, 唱片仍然在这里转。
               两侧 hairline 让三列结构更清晰 */}
           {!isVideo && (
-            <div className="self-center relative h-[62%] flex items-center justify-center">
+            <div className={`self-center relative flex items-center justify-center ${isCompact ? 'col-start-1 row-start-1 h-full' : 'h-[62%]'}`}>
               <span className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-elevated/45 to-transparent" />
               <span className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-elevated/45 to-transparent" />
               <div
-                className={`relative h-[min(100%,220px)] aspect-square rounded-full bg-vinyl border-4 border-line/90 shadow-2xl flex items-center justify-center ${
+                // 坑: Tailwind 静态扫描无法生成带运行时插值的 arbitrary 值(h-[min(100%,${n}px)]),
+                // 所以唱片高度用 inline style。
+                className={`relative aspect-square rounded-full bg-vinyl border-4 border-line/90 shadow-2xl flex items-center justify-center ${
                   isPlaying ? 'animate-[spin_14s_linear_infinite] shadow-accent/50' : ''
                 }`}
+                style={{ height: `min(100%, ${isCompact ? 120 : 220}px)` }}
               >
                 {/* 黑胶底: 同心纹路（无封面时就是整张唱片的样子） */}
                 <span
@@ -1265,8 +1380,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           )}
 
           {/* 右列: 歌词竖列 (当前行居中高亮, 上下行淡出)。
-              视频时左两列不渲染, 必须显式 col-start-2 让歌词贴右边缘, 否则它会落到第一列(左侧) */}
-          {showLyrics && (
+              视频时左两列不渲染, 必须显式 col-start-2 让歌词贴右边缘, 否则它会落到第一列(左侧)。
+              窄屏音频走下面的横向带，不渲染竖列 */}
+          {showLyrics && !(isCompact && !isVideo) && (
             <div className={`relative min-w-0 min-h-0 h-full flex flex-col justify-center gap-2 pl-3 ${isVideo ? 'col-start-2' : ''}`}>
               {/* 视频时歌词压在画面上, 用一层从左到右渐隐的暗底保证可读性 */}
               {isVideo && (
@@ -1328,12 +1444,49 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               )}
             </div>
           )}
+
+          {/* 窄屏音频: 歌词横向带（当前行 + 下一行）。竖列在 ~330px 的舞台里太窄，
+              横向带贴控制胶囊上方，字号小但整行可读 */}
+          {showLyrics && isCompact && !isVideo && (
+            <div className="col-span-2 min-w-0 min-h-0 flex flex-col justify-center gap-1.5">
+              {lyricStatus === 'loading' && (
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{t('正在从网易云获取歌词…')}</span>
+                </div>
+              )}
+              {lyricStatus === 'none' && (
+                <div className="flex items-center gap-2 text-xs text-muted-2">
+                  <Captions className="w-3.5 h-3.5" />
+                  <span>{t('网易云未找到「{title}」的歌词', { title: currentTrack.title })}</span>
+                </div>
+              )}
+              {lyricStatus === 'found' && (
+                <div className="flex flex-col gap-1.5">
+                  <p
+                    style={{ fontSize: lyricFont + 3 }}
+                    className="font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.4] font-semibold text-ink break-words [text-shadow:var(--lyric-shadow)]"
+                  >
+                    {lyricLines[lyricIdx]?.text}
+                  </p>
+                  {lyricLines[lyricIdx + 1] && (
+                    <p
+                      style={{ fontSize: lyricFont }}
+                      className="font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.4] text-ink/55 break-words"
+                    >
+                      {lyricLines[lyricIdx + 1].text}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
       {/* 歌词样式面板 — 字号 + (视频时) 歌词列宽度, 持久在 localStorage */}
       {showLyricSettings && (
-        <div className="absolute right-4 bottom-16 z-40 w-64 rounded-xl bg-app/85 border border-line p-3 flex flex-col gap-2 shadow-2xl">
+        <div className={`absolute z-40 rounded-xl bg-app/95 border border-line p-3 flex flex-col gap-2 shadow-2xl ${isCompact ? 'top-2 left-2 right-2' : 'right-4 bottom-16 w-64'}`}>
           <div className="text-[11px] font-semibold text-ink-3">{t('歌词样式')}</div>
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-muted-2">{t('字号')}</span>
@@ -1385,7 +1538,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       {/* 均衡器 (Equalizer) 面板 — 10段 Web Audio 均衡器，预设 + 手动调节 */}
       {/* 均衡器面板贴在控制胶囊上方(胶囊高约 84px + bottom-3), 避免重叠 */}
       {showEqPanel && (
-        <div className="absolute left-4 bottom-[104px] z-40 w-72 max-h-[calc(100%-112px)] overflow-y-auto rounded-xl bg-app/85 border border-line p-3 flex flex-col gap-2 shadow-2xl">
+        <div className={`absolute z-40 overflow-y-auto rounded-xl bg-app/95 border border-line p-3 flex flex-col gap-2 shadow-2xl ${isCompact ? 'left-2 right-2 bottom-[140px] max-h-[calc(100%-152px)]' : 'left-4 bottom-[104px] w-72 max-h-[calc(100%-112px)]'}`}>
           {/* 面板 header: 标题 + 状态 + 手动/平 reset + 均衡器 on/off */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-ink-2 flex items-center gap-1">
@@ -1458,23 +1611,27 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
       {/* Sleek Bottom Control Bar — absolute 悬浮在画面之上: 不占布局高度,
           隐藏 (opacity-0) 时画面直接透出。做成居中的半透明胶囊(backdrop-blur + 细边框),
-          而不是整条近纯黑渐变 —— 全屏时那条 108px 的渐变会被看成画面下方的"大黑边" */}
+          而不是整条近纯黑渐变 —— 全屏时那条 108px 的渐变会被看成画面下方的"大黑边"。
+          窄屏折叠态不渲染: 折叠胶囊自带 上一首/播放/下一首/展开 */}
+      {!compactCollapsed && (
       <div
-        className={`absolute bottom-3 left-1/2 -translate-x-1/2 z-30 w-full max-w-[min(100%,900px)] rounded-xl bg-pill border border-line-strong/40 backdrop-blur-md shadow-2xl px-3 py-2 transition-opacity duration-300 ${
+        className={`absolute left-1/2 -translate-x-1/2 z-30 w-full max-w-[min(100%,900px)] rounded-xl bg-pill border border-line-strong/40 backdrop-blur-md shadow-2xl px-3 py-2 transition-opacity duration-300 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
+        // 手机浏览器（尤其 iOS 全屏）底部有安全区，胶囊不能被 Home 指示条遮住
+        style={{ bottom: 'max(12px, env(safe-area-inset-bottom))' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Interactive Scrubbing Progress Bar */}
+        {/* Interactive Scrubbing Progress Bar — 窄屏加高，手指更容易点 */}
         <div
-          className="relative group w-full h-4 flex items-center cursor-pointer select-none"
+          className={`relative group w-full ${isCompact ? 'h-5' : 'h-4'} flex items-center cursor-pointer select-none`}
           onMouseDown={handleProgressScrubStart}
           onMouseMove={handleProgressMouseMove}
           onMouseUp={handleProgressScrubEnd}
           onMouseLeave={handleProgressMouseLeave}
         >
           {/* Track background */}
-          <div className="relative w-full h-1.5 group-hover:h-2.5 rounded-full bg-surface-2 transition-all overflow-hidden">
+          <div className={`relative w-full rounded-full bg-surface-2 transition-all overflow-hidden ${isCompact ? 'h-2.5 group-hover:h-3' : 'h-1.5 group-hover:h-2.5'}`}>
             {/* Buffered bar */}
             <div
               className="absolute left-0 top-0 bottom-0 bg-elevated/60 transition-all duration-200"
@@ -1505,15 +1662,15 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         </div>
 
         {/* Secondary Row: Playback Controls, Time, Volume, Speed, Fullscreen */}
-        <div className="flex items-center justify-between gap-3 mt-1.5 flex-wrap">
+        <div className={`flex items-center gap-2 mt-1.5 flex-wrap ${isCompact ? '' : 'justify-between gap-3 sm:gap-4'}`}>
           {/* Left Controls: Prev, Play/Pause, Next & Time */}
           <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={onPrev}
               title={t('上一首 (Previous)')}
-              className="p-2 rounded-full text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
+              className="p-2.5 rounded-full text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
             >
-              <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
+              <SkipBack className="w-5 h-5" />
             </button>
 
             <button
@@ -1531,21 +1688,25 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <button
               onClick={onNext}
               title={t('下一首 (Next)')}
-              className="p-2 rounded-full text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
+              className="p-2.5 rounded-full text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
             >
-              <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
+              <SkipForward className="w-5 h-5" />
             </button>
 
-            {/* Time Indicator */}
-            <div className="text-xs font-mono text-muted tabular-nums ml-1">
-              <span className="text-ink-2 font-medium">{formatTime(currentTime)}</span>
-              <span className="mx-1 text-faint">/</span>
-              <span>{formatTime(duration)}</span>
-            </div>
+            {/* Time Indicator — 窄屏省略（进度条 + 折叠胶囊已经显示时间，避免控制栏换行） */}
+            {!isCompact && (
+              <div className="text-xs font-mono text-muted tabular-nums ml-1">
+                <span className="text-ink-2 font-medium">{formatTime(currentTime)}</span>
+                <span className="mx-1 text-faint">/</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+            )}
           </div>
 
-          {/* Right Controls: Volume, PlayMode, Speed, Fullscreen */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Right Controls: Volume, PlayMode, Speed, Fullscreen
+              窄屏: 用 display:contents 把右侧控件"摊平"到同一行, 否则嵌套的 flex 组
+              会被挤成 162px 的窄列并溢出胶囊(按钮被 overflow-hidden 裁掉)。 */}
+          <div className="flex items-center gap-2 sm:gap-3" style={isCompact ? { display: 'contents' } : undefined}>
             {/* Volume Control */}
             <div className="flex items-center gap-2 group/vol">
               <button
@@ -1571,21 +1732,23 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 title={t('音量: {volume}%{boost}', { volume: Math.round(volume * 100), boost: volumeBoost ? t(' ×2 增强') : '' })}
               />
 
-              {/* 音量增强 ×2 开关 */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleVolumeBoost();
-                }}
-                title={volumeBoost ? t('音量增强 ×2 (已开启, 点击关闭)') : t('音量增强 ×2 (音乐增强)')}
-                className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                  volumeBoost
-                    ? 'bg-accent text-white shadow-sm'
-                    : 'text-muted hover:text-ink hover:bg-surface-2/60'
-                }`}
-              >
-                ×2
-              </button>
+              {/* 音量增强 ×2 开关 — 窄屏控制栏空间有限，收进桌面 */}
+              {!isCompact && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleVolumeBoost();
+                  }}
+                  title={volumeBoost ? t('音量增强 ×2 (已开启, 点击关闭)') : t('音量增强 ×2 (音乐增强)')}
+                  className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    volumeBoost
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-muted hover:text-ink hover:bg-surface-2/60'
+                  }`}
+                >
+                  ×2
+                </button>
+              )}
             </div>
 
             {/* Favorite button */}
@@ -1636,31 +1799,33 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               )}
             </button>
 
-            {/* Playback Speed Menu */}
-            <div className="relative">
-              <button
-                onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                className="px-2 py-1 rounded bg-surface hover:bg-surface-2 border border-line-strong text-xs font-mono text-ink-3 hover:text-ink transition-colors"
-              >
-                {playbackRate}x
-              </button>
+            {/* Playback Speed Menu — 窄屏控制栏空间有限，倍速只在桌面可用 */}
+            {!isCompact && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                  className="px-2 py-1 rounded bg-surface hover:bg-surface-2 border border-line-strong text-xs font-mono text-ink-3 hover:text-ink transition-colors"
+                >
+                  {playbackRate}x
+                </button>
 
-              {showSpeedMenu && (
-                <div className="absolute bottom-9 right-0 py-1.5 w-24 bg-surface border border-line-strong rounded-xl shadow-2xl flex flex-col z-50 text-xs">
-                  {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
-                    <button
-                      key={rate}
-                      onClick={() => setSpeed(rate)}
-                      className={`px-3 py-1.5 text-left font-mono hover:bg-surface-2 transition-colors ${
-                        playbackRate === rate ? 'text-accent font-bold bg-surface-2/50' : 'text-ink-3'
-                      }`}
-                    >
-                      {rate.toFixed(2).replace(/\.00$/, '')}x
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                {showSpeedMenu && (
+                  <div className="absolute bottom-9 right-0 py-1.5 w-24 bg-surface border border-line-strong rounded-xl shadow-2xl flex flex-col z-50 text-xs">
+                    {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
+                      <button
+                        key={rate}
+                        onClick={() => setSpeed(rate)}
+                        className={`px-3 py-1.5 text-left font-mono hover:bg-surface-2 transition-colors ${
+                          playbackRate === rate ? 'text-accent font-bold bg-surface-2/50' : 'text-ink-3'
+                        }`}
+                      >
+                        {rate.toFixed(2).replace(/\.00$/, '')}x
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Fullscreen Toggle */}
             <button
@@ -1675,8 +1840,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               )}
             </button>
 
-            {/* 剧场宽屏模式 (moved from top bar) */}
-            {!isFullscreen && (
+            {/* 剧场宽屏模式 (窄屏没有意义: 屏幕本身比画面窄) */}
+            {!isFullscreen && !isCompact && (
               <button
                 onClick={onToggleTheater}
                 title={isTheaterMode ? t('退出剧场模式') : t('剧场宽屏模式')}
@@ -1729,9 +1894,25 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             >
               <Sliders className="w-4 h-4" />
             </button>
+
+            {/* 窄屏: 把播放器收回到"正在播放"胶囊，把垂直空间还给列表 */}
+            {isCompact && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPlayerExpanded(false);
+                }}
+                title={t('收起播放器')}
+                aria-label={t('收起播放器')}
+                className="p-2 rounded-lg text-muted hover:text-ink hover:bg-surface-2/80 transition-colors"
+              >
+                <ChevronUp className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

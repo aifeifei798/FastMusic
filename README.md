@@ -44,6 +44,7 @@
 - **快捷键**: `J`/`K` 上一首/下一首, `S` 收藏, `L` 歌词, `R` 随心电台, `?` 快捷键面板, `Esc` 关闭。
 - **深浅主题**: 页头的 Sun/Moon 按钮切换深色 / 浅色主题,偏好持久化到 `localStorage('fastmusic_theme')`,首次访问跟随系统 `prefers-color-scheme`。所有颜色都是 `src/index.css` 里的语义 token(`app / surface / line / ink / accent / amber / stage / viewport / pill / lyric-ink ...`),`[data-theme="light"]` 覆盖变量即全站换肤,组件里不写 `neutral-` / `rose-` 这类硬编码色。浅色主题是 Apple 风(近黑文字 + 白卡片 + hairline 边框 + 克制 rose),深色主题带 rose/amber 暖调呼应徽标;视频 `<video>` 视口在两个主题都保持深色,只有舞台背景变浅。
 - **界面语言**: 页头的 Globe 按钮切换中文 / English。文案通过 `src/utils/i18n.ts` 的 `t('中文原文', { vars })` 查表(key 就是中文原文),未收录的文案自动保持中文;语言偏好持久化到 `localStorage('fastmusic_lang')`,`index.html` 首屏前设置 `<html lang>`。服务端返回的中文提示(扫描完成 / 错误 detail)也通过 `tServerMessage()` 翻译。
+- **手机布局（<768px）**: 窄屏自动切换结构 —— 播放器默认折叠成一条「正在播放」胶囊（封面 + 标题 / 歌手 + 时间 + 上一首 / 播放 / 下一首 + 展开），把垂直空间还给列表；展开后音频舞台是「唱片左 + 信息右 + 歌词横向带」两列网格；页头历史 / 快捷键 / 语言收进「更多」菜单，页脚隐藏，媒体类型切换收进「筛选与工具」菜单，均衡器与歌词样式变成全宽 sheet，行密度默认紧凑；播放视口与列表行支持左右滑动切歌（左滑下一首 / 右滑上一首）。
 - **样式**: 全部用 Tailwind utility 类(含 arbitrary variant / arbitrary property),`src/index.css` 只有两个 `@import` + 主题令牌块,没有手写规则。
 
 ## 🚀 快速开始

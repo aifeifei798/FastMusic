@@ -9,7 +9,8 @@ import {
   Heart,
   Sun,
   Moon,
-  Globe
+  Globe,
+  MoreHorizontal
 } from 'lucide-react';
 import { MediaItem, ArtistSummary, AlbumSummary, PlayMode, PlayHistoryItem, RadioChannel, TrackSort } from './types/media';
 import { mediaApi } from './services/api';
@@ -20,6 +21,7 @@ import { PlayHistoryModal } from './components/PlayHistoryModal';
 import { RadioStationBanner } from './components/RadioStationBanner';
 import { LogoMark } from './components/Logo';
 import { getLang, setLang, t, type Lang } from './utils/i18n';
+import { useIsCompact } from './utils/responsive';
 
 export default function App() {
   // Media library state
@@ -68,9 +70,13 @@ export default function App() {
       return 'default';
     }
   });
-  // 列表行密度: comfortable / compact（持久化）
+  // 列表行密度: comfortable / compact（持久化）。窄屏默认紧凑，让一屏能看到更多曲目
   const [rowDensity, setRowDensity] = useState<'comfortable' | 'compact'>(() => {
-    try { return localStorage.getItem('fastmusic_density') === 'compact' ? 'compact' : 'comfortable'; } catch { return 'comfortable'; }
+    try {
+      const saved = localStorage.getItem('fastmusic_density');
+      if (saved === 'compact' || saved === 'comfortable') return saved;
+    } catch {}
+    return typeof window !== 'undefined' && window.innerWidth < 768 ? 'compact' : 'comfortable';
   });
   // 只看"已转码/可直接播"的 .mkv（排队/转码中的隐藏）。持久化到 localStorage。
   const [readyOnly, setReadyOnly] = useState<boolean>(() => {
@@ -123,6 +129,29 @@ export default function App() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState<boolean>(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState<boolean>(false);
+
+  // 窄屏（<768px）布局：播放器默认折叠成胶囊、页头多余入口收进「更多」菜单、页脚隐藏
+  const isCompact = useIsCompact();
+  const [moreMenuOpen, setMoreMenuOpen] = useState<boolean>(false);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Element)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMoreMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [moreMenuOpen]);
 
   // Load Initial Library Data (First batch: limit=30, offset=0)
   const loadData = useCallback(async () => {
@@ -523,8 +552,9 @@ export default function App() {
             </span>
           </div>
 
-          {/* Zone 2: Primary Action Points — 筛选/收藏/历史都在列表工具栏, 页头不重复 */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Zone 2: Primary Action Points — 筛选/收藏/历史都在列表工具栏, 页头不重复。
+              窄屏只保留 电台 / 收藏 / 主题 / 系统配置，其余收进「更多」菜单 */}
+          <div className="relative flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               onClick={() => (isRadioMode ? handleExitRadio() : startRadioMode('all'))}
               title={isRadioMode ? t('电台广播中 · 点击退出电台模式') : t('随心电台 · 随机连播')}
@@ -558,7 +588,7 @@ export default function App() {
             <button
               onClick={() => setIsHistoryModalOpen(true)}
               title={t('播放历史记录')}
-              className="relative p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
+              className="relative hidden sm:block p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
             >
               <History className="w-4 h-4 text-accent" />
               {history.length > 0 && (
@@ -571,7 +601,7 @@ export default function App() {
             <button
               onClick={() => setShowShortcutsModal(true)}
               title={t('快捷键说明 (?)')}
-              className="p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
+              className="hidden sm:block p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
             >
               <Keyboard className="w-4 h-4" />
             </button>
@@ -589,7 +619,7 @@ export default function App() {
               onClick={handleToggleLang}
               title={lang === 'zh' ? t('切换到英文界面') : t('切换到中文界面')}
               aria-label={t('切换语言')}
-              className="p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
+              className="hidden sm:block p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
             >
               <Globe className="w-4 h-4" />
             </button>
@@ -602,12 +632,50 @@ export default function App() {
             >
               <Server className="w-4 h-4 text-accent" />
             </button>
+
+            {/* 窄屏「更多」菜单: 历史 / 快捷键 / 语言 */}
+            <div ref={moreMenuRef} className="relative sm:hidden">
+              <button
+                onClick={() => setMoreMenuOpen((v) => !v)}
+                title={t('更多')}
+                aria-label={t('更多')}
+                className="p-2 rounded-xl bg-surface hover:bg-surface-2 border border-line text-ink-3 hover:text-ink transition-colors cursor-pointer"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+              {moreMenuOpen && (
+                <div className="absolute top-full right-0 mt-2 w-[220px] p-2 rounded-xl bg-surface border border-line shadow-xl shadow-black/60 flex flex-col gap-1">
+                  <button
+                    onClick={() => { setMoreMenuOpen(false); setIsHistoryModalOpen(true); }}
+                    className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-ink-2 hover:bg-surface-2 transition-colors"
+                  >
+                    <History className="w-4 h-4 text-accent" />
+                    <span>{t('播放历史')}</span>
+                    {history.length > 0 && <span className="font-mono text-[10px] text-muted-2">{history.length}</span>}
+                  </button>
+                  <button
+                    onClick={() => { setMoreMenuOpen(false); setShowShortcutsModal(true); }}
+                    className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-ink-2 hover:bg-surface-2 transition-colors"
+                  >
+                    <Keyboard className="w-4 h-4" />
+                    <span>{t('快捷键说明')}</span>
+                  </button>
+                  <button
+                    onClick={() => { setMoreMenuOpen(false); handleToggleLang(); }}
+                    className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-ink-2 hover:bg-surface-2 transition-colors"
+                  >
+                    <Globe className="w-4 h-4" />
+                    <span>{lang === 'zh' ? t('切换到英文界面') : t('切换到中文界面')}</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
       {/* Main App Canvas */}
-      <main className="flex-1 min-h-0 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col gap-4">
+      <main className="flex-1 min-h-0 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-4 flex flex-col gap-3 sm:gap-4">
 
         {/* ================= HERO MEDIA PLAYER SECTION ================= */}
         <section className="w-full flex flex-col gap-3">
@@ -634,6 +702,7 @@ export default function App() {
               onToggleTheater={() => setIsTheaterMode(!isTheaterMode)}
               isFavorited={currentTrack ? favoriteIds.has(currentTrack.id) : false}
               onToggleFavorite={currentTrack ? () => handleToggleFavorite(currentTrack) : undefined}
+              isCompact={isCompact}
             />
           </div>
 
@@ -676,12 +745,15 @@ export default function App() {
             onToggleFavorite={handleToggleFavorite}
             activeTab={libraryActiveTab}
             onTabChange={setLibraryActiveTab}
+            isCompact={isCompact}
+            onPrevTrack={handlePrevTrack}
+            onNextTrack={handleNextTrack}
           />
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="mt-2 border-t border-line-soft bg-app py-3 px-4 text-center text-xs text-muted-2">
+      {/* Footer — 窄屏隐藏（历史/快捷键/系统配置都在页头，省 ~40px 给列表） */}
+      <footer className="hidden sm:block mt-2 border-t border-line-soft bg-app py-3 px-4 text-center text-xs text-muted-2">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <LogoMark className="w-5 h-5 rounded-md" />

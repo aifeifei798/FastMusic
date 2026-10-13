@@ -7,6 +7,11 @@
 ### Added
 - **Docker 部署**: `Dockerfile`（Node 22 + `ffmpeg` + `fd-find`，生产模式 serve `dist/`）、`docker-compose.yml`（媒体目录挂载 + `fastmusic_data` 持久卷）、GitHub Actions `.github/workflows/docker.yml` 自动构建并推送到 GHCR（`ghcr.io/aifeifei798/fastmusic:latest`）。
 - `DATA_DIR` 环境变量：索引 / 封面缓存 / 歌词缓存的写入位置（默认与 `server.ts` 同目录），容器里设为 `/data` 并挂载卷。
+- **手机（<768px）布局重构**（`src/utils/responsive.ts` 的 `useIsCompact()`）：
+  - 播放器默认折叠成一条「正在播放」胶囊（封面 + 标题 / 歌手 + 时间 + 上一首 / 播放 / 下一首 + 展开），把垂直空间还给列表；展开状态持久在 `localStorage('fastmusic_player_expanded')`，全屏时始终展开。
+  - 展开态音频舞台改为「唱片左 + 信息右 + 歌词横向带」两列网格（三列结构在 ~330px 舞台里会把标题挤成每行一个字）；MTV 歌词列自动收窄。
+  - 播放视口与列表行支持左右滑动切歌（左滑下一首 / 右滑上一首）。
+  - 页头「更多」菜单（历史 / 快捷键 / 语言），媒体类型切换收进「筛选与工具」菜单，均衡器与歌词样式面板变成全宽 sheet，控制栏适配 iOS 安全区。
 
 ### Changed
 - **频谱模式切换改为纯图标**（柱状 / 波形 / 光晕环 / 对称 / 无），名称只出现在 `title` / `aria-label`，窄屏不再换行挤乱播放区顶栏。
