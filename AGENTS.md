@@ -251,7 +251,7 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   label/hint），渲染时**只显示图标**（文字在手机上会把顶栏挤成多行），名称走 `title` / `aria-label`；
   新增模式时改这个数组即可，i18n 表需要对应的 label/hint key。选 `none` 时 `AudioVisualizer` 完全不挂载（舞台纯黑，
   只剩左侧信息列与右侧歌词列），所以 `AudioVisualizer` 的 canvas 不存在 — 不要假设音频曲目一定有 canvas。
-- **`AudioVisualizer` 的 canvas 尺寸与帧率**：像素尺寸 = 容器 CSS 尺寸 × `min(2, devicePixelRatio)`（`resizeCanvas()` + `ResizeObserver`，cleanup 时 disconnect），不是写死的 800×360；每帧只读一次 `currentTheme()` 的 palette（`VisualizerPalette` 类型从 `src/utils/theme.ts` 导出，传给 `renderBars/renderWave/renderCircular/renderMirrored`）。暂停或 `prefers-reduced-motion` 时 `minInterval = 66ms`（~15fps，实测 playing 120 draws/2s、paused 30 draws/2s），rAF 仍然每帧请求只是跳过绘制。`src/index.css` 末尾的 `@media (prefers-reduced-motion: reduce)` 把全站 CSS 动画/过渡降级到 0.01ms（唱片旋转、spinner、淡入）。
+- **`AudioVisualizer` 的 canvas 尺寸与帧率**：像素尺寸 = 容器 CSS 尺寸 × `min(2, devicePixelRatio)`（`resizeCanvas()` + `ResizeObserver`，cleanup 时 disconnect），不是写死的 800×360；每帧只读一次 `currentTheme()` 的 palette（`VisualizerPalette` 类型从 `src/utils/theme.ts` 导出，传给 `renderBars/renderWave/renderCircular/renderMirrored`）。暂停或 `prefers-reduced-motion` 时 `minInterval = 66ms`（~15fps，实测 playing 120 draws/2s、paused 30 draws/2s），rAF 仍然每帧请求只是跳过绘制。`src/index.css` 末尾的 `@media (prefers-reduced-motion: reduce)` 把全站 CSS 动画/过渡降级到 0.01ms（spinner、淡入），但**唱片旋转是例外**：它用 `src/index.css` 里的语义化 `@keyframes vinyl-spin` + `.vinyl-spin`（14s 一圈，`VideoJsPlayer.tsx` 的唱片 div 和窄屏折叠胶囊的小唱片都挂这个类），降级规则里 `.vinyl-spin` 只被放慢到 40s 一圈 —— 用 Tailwind 的 `animate-[spin_14s_linear_infinite]` 会被全局规则杀掉，唱片看起来完全不转。
   列表工具栏里的"随心电台"按钮已删除（`LibraryView.tsx` 不再接收 `onStartRadio`），电台入口只剩页头
   的 nav 链接与"随心电台/电台广播中"按钮，以及 `R` 键。搜索框不再被 `max-w-xl` 限制，而是 `flex-1`
   填满 tabs 与筛选控件之间的剩余宽度（tabs 组 `shrink-0`）。

@@ -1155,13 +1155,13 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           <video> 仍在 DOM 里（视口只是 opacity-0），所以音频照常播放。 */}
       {compactCollapsed && (
         <div className="flex items-center gap-2.5 px-3 py-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-          <div className="relative w-11 h-11 rounded-full bg-vinyl border-2 border-line-strong/70 flex items-center justify-center overflow-hidden shrink-0">
+          <div className={`relative w-11 h-11 rounded-full bg-vinyl border-2 border-line-strong/70 flex items-center justify-center overflow-hidden shrink-0 ${isPlaying ? 'vinyl-spin' : ''}`}>
             {coverUrl ? (
               <img
                 src={coverUrl}
                 alt={currentTrack?.title || ''}
                 referrerPolicy="no-referrer"
-                className={`w-full h-full rounded-full object-cover ${isPlaying ? 'animate-[spin_14s_linear_infinite]' : ''}`}
+                className="w-full h-full rounded-full object-cover"
               />
             ) : (
               <Music className="w-4 h-4 text-muted" />
@@ -1451,7 +1451,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 // 坑: Tailwind 静态扫描无法生成带运行时插值的 arbitrary 值(h-[min(100%,${n}px)]),
                 // 所以唱片高度用 inline style。
                 className={`relative aspect-square rounded-full bg-vinyl border-4 border-line/90 shadow-2xl flex items-center justify-center ${
-                  isPlaying ? 'animate-[spin_14s_linear_infinite] shadow-accent/50' : ''
+                  isPlaying ? 'vinyl-spin shadow-accent/50' : ''
                 }`}
                 style={{ height: `min(100%, ${isCompact ? 120 : 220}px)` }}
               >

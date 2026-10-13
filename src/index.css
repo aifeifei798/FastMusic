@@ -113,9 +113,22 @@
   opacity: var(--glow-opacity);
 }
 
+/* 唱片旋转: 用语义化动画而不是 Tailwind 的 animate-[spin_14s_linear_infinite]，
+   因为下面的全局降级规则会把 utility 动画杀掉，唱片看起来完全静止（其实没播放
+   的错觉)。旋转是"正在播放"的核心信号，减少动效时只是变慢而不是停止。 */
+@keyframes vinyl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.vinyl-spin {
+  animation: vinyl-spin 14s linear infinite;
+}
+
 /* 系统「减少动态效果」偏好: 全站 CSS 动画/过渡降级。频谱动画的降帧在
-   AudioVisualizer 里用 matchMedia 单独处理，这里覆盖唱片旋转、spinner、
-   淡入这类 utility 动画。 */
+   AudioVisualizer 里用 matchMedia 单独处理，这里覆盖 spinner、淡入这类
+   utility 动画。 */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -124,5 +137,12 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /* 例外: 唱片仍然转，只是慢到 40s 一圈（.vinyl-spin 的 specificity 高于 *，
+     同为 !important 时按 specificity 取胜）。 */
+  .vinyl-spin {
+    animation-duration: 40s !important;
+    animation-iteration-count: infinite !important;
   }
 }
