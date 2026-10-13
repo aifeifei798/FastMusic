@@ -446,13 +446,60 @@ export default function App() {
     setPlayMode('loop-all');
   };
 
-  // 全局键盘监听: R 电台 / S 收藏 / J/K 上一首下一首 / ? 快捷键面板
+  // 全局键盘监听: R 电台 / S 收藏 / J K 上一首下一首 / Space 播放暂停 / ← → 快退快进 /
+  // ↑ ↓ 音量 / M 静音 / F 全屏 / V 频谱模式 / ? 快捷键面板
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
         return;
       }
       const bare = !e.ctrlKey && !e.metaKey && !e.altKey;
+      const controls = (window as unknown as {
+        _fastMusicPlayerControls?: {
+          togglePlay: () => void;
+          seekBy: (delta: number) => void;
+          adjustVolume: (delta: number) => void;
+          toggleMute: () => void;
+          toggleFullscreen: () => void;
+          cycleVisualizer: () => void;
+        };
+      })._fastMusicPlayerControls;
+      // video.js 自带 Space / ← → 快捷键（播放器有焦点时），跳过避免双重触发
+      const target = e.target as HTMLElement | null;
+      const inPlayer = !!target && typeof target.closest === 'function' && !!target.closest('.video-js');
+
+      if (e.code === 'Space' && bare && !inPlayer) {
+        e.preventDefault();
+        controls?.togglePlay();
+      }
+      if (e.code === 'ArrowLeft' && bare && !inPlayer) {
+        e.preventDefault();
+        controls?.seekBy(-10);
+      }
+      if (e.code === 'ArrowRight' && bare && !inPlayer) {
+        e.preventDefault();
+        controls?.seekBy(10);
+      }
+      if (e.code === 'ArrowUp' && bare && !inPlayer) {
+        e.preventDefault();
+        controls?.adjustVolume(0.05);
+      }
+      if (e.code === 'ArrowDown' && bare && !inPlayer) {
+        e.preventDefault();
+        controls?.adjustVolume(-0.05);
+      }
+      if (e.code === 'KeyM' && bare) {
+        e.preventDefault();
+        controls?.toggleMute();
+      }
+      if (e.code === 'KeyF' && bare) {
+        e.preventDefault();
+        controls?.toggleFullscreen();
+      }
+      if (e.code === 'KeyV' && bare) {
+        e.preventDefault();
+        controls?.cycleVisualizer();
+      }
       if (e.code === 'KeyR' && bare) {
         e.preventDefault();
         if (isRadioMode) {
@@ -817,11 +864,11 @@ export default function App() {
                 <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-ink">Space</kbd>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-line/60">
-                <span className="text-muted">{t('快退 5 秒')}</span>
+                <span className="text-muted">{t('快退 10 秒')}</span>
                 <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-ink">{t('← 方向左键')}</kbd>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-line/60">
-                <span className="text-muted">{t('快进 5 秒')}</span>
+                <span className="text-muted">{t('快进 10 秒')}</span>
                 <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-ink">{t('→ 方向右键')}</kbd>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-line/60">
@@ -851,6 +898,10 @@ export default function App() {
               <div className="flex justify-between items-center py-1 border-b border-line/60">
                 <span className="text-muted">{t('歌词 开 / 关')}</span>
                 <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-accent-soft">{t('L 键')}</kbd>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-line/60">
+                <span className="text-muted">{t('切换频谱模式')}</span>
+                <kbd className="px-2 py-0.5 rounded bg-surface-2 font-mono text-[11px] text-accent-soft">{t('V 键')}</kbd>
               </div>
               <div className="flex justify-between items-center py-1">
                 <span className="text-muted">{t('本面板 开 / 关')}</span>

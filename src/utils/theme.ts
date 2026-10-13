@@ -1,6 +1,7 @@
 // 主题工具: UI 颜色全部走 index.css 里的语义 token(bg-app / text-ink ...),
 // 但 canvas 绘制、占位渐变这类 JS 里的颜色需要按主题取不同的值。
 export type ThemeName = 'dark' | 'light';
+export type VisualizerPalette = typeof VISUALIZER_PALETTE.dark;
 
 export function currentTheme(): ThemeName {
   return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';

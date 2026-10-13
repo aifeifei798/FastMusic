@@ -74,6 +74,28 @@ const VISUALIZER_MODES: {
   { mode: 'none', icon: EyeOff, label: '无频谱', hint: '无频谱（纯黑舞台，只保留歌词与信息）' },
 ];
 
+// --- 断点续播 / 音量持久化 ---
+const VOLUME_KEY = 'fastmusic_volume';
+const RESUME_KEY = 'fastmusic_resume';
+const RESUME_MAX = 300;
+
+function readSavedVolume(): number {
+  const raw = localStorage.getItem(VOLUME_KEY);
+  if (raw === null) return 0.7;
+  const v = Number(raw);
+  return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.7;
+}
+
+function loadResumeMap(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(RESUME_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, number> : {};
+  } catch {
+    return {};
+  }
+}
+
 // --- 歌词 (LRC) 解析 ---
 // 一行可能有多个时间戳 ([00:01.00][00:02.00] 同一句), 展开成多条。
 interface LyricLine {
@@ -167,12 +189,17 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   // server metadata 里的真实时长（秒）。分片 MP4 下 Chrome 的 duration 先等于"已缓冲片段末尾"，
   // 必须用这个种子防止 durationchange 把真实时长覆盖成局部值。
   const seedDurationRef = useRef(0);
+  // 断点续播：每曲目上次播放位置（秒），重新打开同一曲目时继续
+  const resumeMapRef = useRef<Record<string, number>>(loadResumeMap());
+  const currentTrackIdRef = useRef<string | undefined>(undefined);
+  const lastResumeSaveRef = useRef(0);
+  const [resumeHint, setResumeHint] = useState<number | null>(null);
 
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
   const [bufferedEnd, setBufferedEnd] = useState<number>(0);
-  const [volume, setVolume] = useState<number>(0.7); // 默认音量 70%
+  const [volume, setVolume] = useState<number>(readSavedVolume()); // 音量持久化，默认 70%
   const [isMuted, setIsMuted] = useState<boolean>(false);
   // 音量增强 ×2: video.js 音量上限是 1, 增强靠音频图里的 GainNode 实现。
   // 默认开启（没有 localStorage 记录时视为开启），只有用户显式关闭过才保持关闭。
@@ -497,8 +524,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     });
 
     playerRef.current = player;
-    // 默认音量 70%
-    player.volume(0.7);
+    // 音量：恢复上次保存的值（默认 70%）
+    player.volume(readSavedVolume());
 
     player.on('play', () => {
       setIsPlaying(true);
@@ -532,6 +559,27 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         const t = player.currentTime();
         if (Number.isFinite(t)) setCurrentTime(t || 0);
       }
+      // 断点续播：每 10s 记录一次位置（只记"中途"，开头 10s 与最后 5s 不记）
+      const t = player.currentTime() ?? 0;
+      const dur = player.duration() ?? 0;
+      const id = currentTrackIdRef.current;
+      if (
+        id &&
+        Number.isFinite(t) && t > 10 &&
+        Number.isFinite(dur) && dur > 0 && t < dur - 5 &&
+        t - lastResumeSaveRef.current >= 10
+      ) {
+        lastResumeSaveRef.current = t;
+        const map = resumeMapRef.current;
+        map[id] = Math.round(t);
+        const keys = Object.keys(map);
+        if (keys.length > RESUME_MAX) delete map[keys[0]];
+        try {
+          localStorage.setItem(RESUME_KEY, JSON.stringify(map));
+        } catch {
+          // localStorage 满 / 隐私模式：忽略
+        }
+      }
       // Calculate buffer
       try {
         const buffered = player.buffered();
@@ -555,8 +603,14 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     });
 
     player.on('volumechange', () => {
-      setVolume(player.volume() || 1);
+      const v = player.volume() ?? 1;
+      setVolume(v);
       setIsMuted(player.muted() || false);
+      try {
+        localStorage.setItem(VOLUME_KEY, String(v));
+      } catch {
+        // localStorage 不可用时忽略
+      }
     });
 
     player.on('ratechange', () => {
@@ -589,6 +643,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     setIsDraggingProgress(false);
     setCurrentTime(0);
     setBufferedEnd(0);
+    currentTrackIdRef.current = currentTrack?.id;
+    lastResumeSaveRef.current = 0;
+    setResumeHint(null);
     // fragmented MP4: Chrome duration 是 Infinity 直到 fully buffered → 先 seed 从
     // server metadata (秒), durationchange 之后只覆盖 >= 种子的值
     seedDurationRef.current = currentTrack?.duration || 0;
@@ -613,6 +670,21 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       src: streamUrl,
       type: mime,
     });
+
+    // 断点续播：同一曲目上次中途停止 → 从上次位置继续。
+    // 只在"中途"恢复（>10s 且离结尾 >5s），播完/开头几秒不恢复。
+    const savedPos = currentTrack?.id ? resumeMapRef.current[currentTrack.id] || 0 : 0;
+    if (savedPos > 10 && (!seedDurationRef.current || savedPos < seedDurationRef.current - 5)) {
+      player.one('loadedmetadata', () => {
+        try {
+          player.currentTime(savedPos);
+          setCurrentTime(savedPos);
+          setResumeHint(savedPos);
+        } catch (err) {
+          // 某些容器(fragmented mp4) seek 失败时忽略，从头播
+        }
+      });
+    }
 
     player.ready(() => {
       player.play()?.catch((err: any) => {
@@ -863,6 +935,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     if (!player) return;
     player.currentTime(newTime);
     setCurrentTime(newTime);
+    setResumeHint(null);
   };
 
   const handleProgressScrubStart = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -1002,6 +1075,49 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     const nextIdx = (modes.indexOf(playMode) + 1) % modes.length;
     onChangePlayMode(modes[nextIdx]);
   };
+
+  // 全局播放控制：App.tsx 的快捷键（Space / ← → / ↑ ↓ / M / F / V）通过
+  // window._fastMusicPlayerControls 调用播放器，与 window._fastMusicAnalyser 同一套路。
+  // 没有 deps → 每次渲染刷新闭包，handler 不会拿到旧的 duration / visualizerMode。
+  useEffect(() => {
+    const controls = {
+      togglePlay,
+      seekBy: (delta: number) => {
+        const player = playerRef.current;
+        if (!player) return;
+        const dur = player.duration() || duration || 0;
+        handleSeek(Math.max(0, Math.min(dur, (player.currentTime() || 0) + delta)));
+      },
+      adjustVolume: (delta: number) => {
+        const player = playerRef.current;
+        if (!player) return;
+        if (player.muted()) player.muted(false);
+        player.volume(Math.max(0, Math.min(1, (player.volume() || 0) + delta)));
+      },
+      toggleMute,
+      toggleFullscreen,
+      cycleVisualizer: () => {
+        const modes = VISUALIZER_MODES.map((m) => m.mode);
+        const idx = modes.indexOf(visualizerMode);
+        changeVisualizerMode(modes[(idx + 1) % modes.length]);
+      },
+    };
+    (window as unknown as { _fastMusicPlayerControls?: typeof controls })._fastMusicPlayerControls = controls;
+  });
+
+  useEffect(() => {
+    return () => {
+      const w = window as unknown as { _fastMusicPlayerControls?: unknown };
+      delete w._fastMusicPlayerControls;
+    };
+  }, []);
+
+  // 续播提示 8s 后自动消失
+  useEffect(() => {
+    if (resumeHint === null) return;
+    const timer = setTimeout(() => setResumeHint(null), 8000);
+    return () => clearTimeout(timer);
+  }, [resumeHint]);
 
   // 画面/可视化切换: server 已正确分类 .mkv/.mp4 等为 video (media_type),
   // 但 .webm 音频-only 与 video 同 ext 需 browser videoWidth 判断 → 两者 OR 组合。
@@ -1314,6 +1430,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               <p className="text-sm font-medium text-accent">{t(currentTrack.artist || '未知歌手')}</p>
               {currentTrack.album && (
                 <p className="text-[11px] leading-snug text-muted-2 break-words">{currentTrack.album}</p>
+              )}
+              {resumeHint !== null && (
+                <p className="text-[11px] text-muted-2" aria-live="polite">
+                  {t('继续播放 {time}', { time: formatTime(resumeHint) })}
+                </p>
               )}
             </div>
           )}

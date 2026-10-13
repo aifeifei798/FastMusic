@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { parseFile } from 'music-metadata';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -115,6 +115,7 @@ interface TranscodeJob {
 // key = 源绝对路径
 const transcodeJobs = new Map<string, TranscodeJob>();
 let transcodeRunning = 0; // 正在跑的 ffmpeg 数量
+const activeTranscodeProcs = new Set<ChildProcess>(); // 优雅退出时需要 kill 这些子进程
 const transcodeQueue: string[] = []; // 源绝对路径队列
 // remux 是纯 I/O（CPU 几乎为零），可以并发；VP9 转码是 CPU 密集，并发反而拖慢
 const TRANCODE_CONCURRENCY = Math.max(1, parseInt(process.env.TRANCODE_CONCURRENCY || '3', 10));
@@ -151,10 +152,16 @@ function hashString(s: string): number {
 const sortCache = new Map<string, ServerMediaItem[]>();
 // 搜索用的小写字段缓存（惰性填充，不写进 db 文件，避免体积膨胀）
 const lowerCache = new Map<string, { t: string; a: string }>();
+// 歌手/专辑列表缓存：全库遍历 34k 条 ~15-30ms，前端启动时两个请求都打，缓存后 <1ms。
+// 注意 coverIndex 变化（封面预取）不影响这些列表的字段，所以不需要失效；只有库增删才失效。
+let artistsCache: Array<{ artist_name: string; album_count: number; track_count: number; cover_track_id?: string; _coverId?: string; _sampleId?: string }> | null = null;
+const albumsCache = new Map<string, Array<{ artist_name: string; album_name: string; track_count: number; cover_track_id?: string; _coverId?: string; _sampleId?: string }>>();
 
 function invalidateQueryCaches(): void {
   sortCache.clear();
   lowerCache.clear();
+  artistsCache = null;
+  albumsCache.clear();
 }
 
 // 返回按 sort 排好的全库数组（引用共享，调用方只读 + filter，不要原地修改）
@@ -388,6 +395,7 @@ function startTranscode(job: TranscodeJob): void {
       container !== 'vp9'
     );
     const proc = spawn('ffmpeg', args);
+    activeTranscodeProcs.add(proc);
     let stderrTail = '';
 
     proc.stderr.on('data', (d: Buffer) => {
@@ -404,12 +412,14 @@ function startTranscode(job: TranscodeJob): void {
     });
 
     proc.on('error', (err: Error) => {
+      activeTranscodeProcs.delete(proc);
       try { fs.unlinkSync(job.tmpPath!); } catch {}
       transcodeRunning -= 1;
       markTranscodeError(job, `spawn failed: ${err}`);
     });
 
     proc.on('close', (code: number | null) => {
+      activeTranscodeProcs.delete(proc);
       transcodeRunning -= 1;
       if (code === 0) {
         try {
@@ -529,6 +539,23 @@ function awaitSidecar(job: TranscodeJob, cb: () => void): void {
 // 绝大多数 .mkv 是 AV1+Opus，remux 秒级完成，所以队列几分钟就能消化完。
 // 目的：MTV 首次播放不再黑屏干等；队列在空闲时逐步消化。
 // 关闭：PRETRANCODE_MKV=0。
+function cleanupStaleTmpFiles(): void {
+  // 进程被 kill / 断电时 ffmpeg 的中间文件会留在媒体目录里，下次扫描靠 isSidecarFile()
+  // 才不会把它们入库；启动时清一遍更干净。
+  let removed = 0;
+  for (const item of MEDIA_DB.values()) {
+    if (!item.abs_path) continue;
+    const tmp = `${item.abs_path}.fastmusic.tmp`;
+    try {
+      if (fs.existsSync(tmp)) {
+        fs.unlinkSync(tmp);
+        removed++;
+      }
+    } catch {}
+  }
+  if (removed > 0) console.log(`[Transcode] 清理 ${removed} 个残留的 .fastmusic.tmp 中间文件`);
+}
+
 function queueAllMkvTranscodes(): void {
   if (process.env.PRETRANCODE_MKV === '0') return;
   const pending: Array<{ path: string; mtime: number; size: number; duration?: number }> = [];
@@ -594,6 +621,17 @@ function saveDbToDisk(): void {
   } catch (err) {
     console.error('[DB] 写入本地数据库失败:', err);
   }
+}
+
+// 扫描过程中防抖落盘：34k 条全库 JSON ~15MB，每写一次 ~200ms，所以每 5s 最多写一次。
+// 这样进程被 kill / 断电时不会丢掉整个扫描进度（之前只在扫描结束时写一次）。
+let dbSaveTimer: NodeJS.Timeout | null = null;
+function scheduleDbSave(): void {
+  if (dbSaveTimer) return;
+  dbSaveTimer = setTimeout(() => {
+    dbSaveTimer = null;
+    saveDbToDisk();
+  }, 5000);
 }
 
 // Configured scan directories (supports multiple directories)
@@ -836,6 +874,7 @@ async function scanMultipleLibraries(rootDirs: string[], force: boolean = false)
             MEDIA_DB.delete(id);
             invalidateQueryCaches();
           }
+          scheduleDbSave();
           return;
         }
         if (parsed.hasTag) taggedCount++;
@@ -856,6 +895,7 @@ async function scanMultipleLibraries(rootDirs: string[], force: boolean = false)
         });
         invalidateQueryCaches();
         totalAdded++;
+        scheduleDbSave();
       } catch (err) {
         console.warn(`[Warn] 解析文件失败 ${filePath}:`, err);
       }
@@ -1044,35 +1084,67 @@ app.post('/api/scan', async (req: Request, res: Response) => {
 
 // 2. 获取所有歌手 / UP主
 app.get('/api/artists', (_req: Request, res: Response) => {
-  const artistsMap = new Map<string, { albums: Set<string>; tracks: number; coverId?: string; sampleId?: string }>();
+  if (!artistsCache) {
+    const artistsMap = new Map<string, { albums: Set<string>; tracks: number; coverId?: string; sampleId?: string }>();
 
-  for (const item of MEDIA_DB.values()) {
-    if (!artistsMap.has(item.artist)) {
-      artistsMap.set(item.artist, { albums: new Set(), tracks: 0 });
+    for (const item of MEDIA_DB.values()) {
+      if (!artistsMap.has(item.artist)) {
+        artistsMap.set(item.artist, { albums: new Set(), tracks: 0 });
+      }
+      const info = artistsMap.get(item.artist)!;
+      info.albums.add(item.album);
+      info.tracks += 1;
+      // 头像取该歌手第一个"封面已缓存"的曲目（只读缓存，不触发网络解析）；
+      // sampleId 是任意一条曲目，前端"补全封面"按钮用它去批量解析。
+      if (!info.coverId && coverIndex.has(item.id)) info.coverId = item.id;
+      if (!info.sampleId) info.sampleId = item.id;
     }
-    const info = artistsMap.get(item.artist)!;
-    info.albums.add(item.album);
-    info.tracks += 1;
-    // 头像取该歌手第一个"封面已缓存"的曲目（只读缓存，不触发网络解析）；
-    // sampleId 是任意一条曲目，前端"补全封面"按钮用它去批量解析。
-    if (!info.coverId && coverIndex.has(item.id)) info.coverId = item.id;
-    if (!info.sampleId) info.sampleId = item.id;
+
+    artistsCache = Array.from(artistsMap.entries()).map(([artist_name, data]) => ({
+      artist_name,
+      album_count: data.albums.size,
+      track_count: data.tracks,
+      cover_track_id: data.coverId || data.sampleId,
+      // avatar_url 每次响应时重新解析：封面预取任务会在运行中新增缓存，缓存的
+      // coverId 可能已经过期，所以这里只读 coverIndex（不联网）。
+      _coverId: data.coverId,
+      _sampleId: data.sampleId,
+    }));
   }
 
-  const result = Array.from(artistsMap.entries()).map(([artist_name, data]) => ({
-    artist_name,
-    album_count: data.albums.size,
-    track_count: data.tracks,
-    avatar_url: data.coverId ? `/api/cover/${data.coverId}` : undefined,
-    cover_track_id: data.coverId || data.sampleId
-  }));
-
-  res.json(result);
+  res.json(
+    artistsCache.map((a) => {
+      const cid = (a._coverId && coverIndex.has(a._coverId)) ? a._coverId : (a._sampleId && coverIndex.has(a._sampleId) ? a._sampleId : undefined);
+      return {
+        artist_name: a.artist_name,
+        album_count: a.album_count,
+        track_count: a.track_count,
+        avatar_url: cid ? `/api/cover/${cid}` : undefined,
+        cover_track_id: a.cover_track_id,
+      };
+    })
+  );
 });
 
 // 3. 获取专辑列表
 app.get('/api/albums', (req: Request, res: Response) => {
   const artistFilter = req.query.artist as string | undefined;
+  const cacheKey = artistFilter || '__all__';
+  const cached = albumsCache.get(cacheKey);
+  if (cached) {
+    res.json(cached.map((d) => {
+      const cid = (d._coverId && coverIndex.has(d._coverId)) ? d._coverId : (d._sampleId && coverIndex.has(d._sampleId) ? d._sampleId : undefined);
+      return {
+        artist_name: d.artist_name,
+        album_name: d.album_name,
+        track_count: d.track_count,
+        cover_url: cid ? `/api/cover/${cid}` : undefined,
+        cover_track_id: d.cover_track_id,
+      };
+    }));
+    return;
+  }
+
   const albumsMap = new Map<string, { artist_name: string; album_name: string; track_count: number; coverId?: string; sampleId?: string }>();
 
   for (const item of MEDIA_DB.values()) {
@@ -1092,15 +1164,27 @@ app.get('/api/albums', (req: Request, res: Response) => {
     if (!info.coverId && coverIndex.has(item.id)) info.coverId = item.id;
   }
 
-  res.json(
-    Array.from(albumsMap.values()).map((d) => ({
+  const built = Array.from(albumsMap.values()).map((d) => ({
+    artist_name: d.artist_name,
+    album_name: d.album_name,
+    track_count: d.track_count,
+    cover_track_id: d.coverId || d.sampleId,
+    _coverId: d.coverId,
+    _sampleId: d.sampleId,
+  }));
+  albumsCache.set(cacheKey, built);
+
+  res.json(built.map((d) => {
+    // coverIndex 会在封面预取过程中增长，所以每次响应重新解析（只读索引，不联网）
+    const cid = (d._coverId && coverIndex.has(d._coverId)) ? d._coverId : (d._sampleId && coverIndex.has(d._sampleId) ? d._sampleId : undefined);
+    return {
       artist_name: d.artist_name,
       album_name: d.album_name,
       track_count: d.track_count,
-      cover_url: d.coverId ? `/api/cover/${d.coverId}` : undefined,
-      cover_track_id: d.coverId || d.sampleId
-    }))
-  );
+      cover_url: cid ? `/api/cover/${cid}` : undefined,
+      cover_track_id: d.cover_track_id,
+    };
+  }));
 });
 
 // 4. 查询媒体曲目 (支持模糊搜索、类型过滤与 limit / offset 分页)
@@ -1275,33 +1359,82 @@ function serveFileWithRange(
   mimeType: string,
   rangeHeader?: string,
 ): void {
-  const stat = fs.statSync(filePath);
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(filePath);
+  } catch (err) {
+    res.status(404).json({ detail: `文件不存在: ${String(err)}` });
+    return;
+  }
   const fileSize = stat.size;
+  // ETag 基于实际 served 文件的大小 + mtime：转码产出新 sidecar 时 ETag 自动变化，
+  // 所以缓存是安全的（旧版 no-store 会让重复播放每次都重新读盘）。
+  const etag = `"${fileSize}-${Math.floor(stat.mtimeMs)}"`;
+  const baseHeaders = {
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'no-cache',
+    ETag: etag,
+    'Last-Modified': new Date(stat.mtimeMs).toUTCString(),
+  };
+
+  // 只有不带 Range 的请求才可能 304：带 Range 时返回 304 会让播放器寻道失效。
+  if (!rangeHeader && res.req.headers['if-none-match'] === etag) {
+    res.status(304).setHeader('ETag', etag).end();
+    return;
+  }
+
+  if (res.req.method === 'HEAD') {
+    res.writeHead(200, { ...baseHeaders, 'Content-Length': fileSize, 'Content-Type': mimeType });
+    res.end();
+    return;
+  }
+
+  // 流读取失败（文件被删/权限/IO 错误）必须挂 error handler，否则 uncaughtException
+  // 会把整个进程崩掉。
+  const pipe = (stream: fs.ReadStream) => {
+    stream.on('error', (err: Error) => {
+      console.error(`[Stream] 读取失败 ${filePath}:`, err);
+      try { res.end(); } catch {}
+    });
+    stream.pipe(res);
+  };
 
   if (rangeHeader) {
-    const parts = rangeHeader.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    const chunksize = end - start + 1;
-    const fileStream = fs.createReadStream(filePath, { start, end });
-
+    const m = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+    if (!m || (!m[1] && !m[2])) {
+      res.status(400).json({ detail: '非法 Range 头' });
+      return;
+    }
+    let start: number;
+    let end: number;
+    if (!m[1]) {
+      // 后缀范围 bytes=-N → 最后 N 字节（curl -r / 部分播放器会用）
+      const suffix = parseInt(m[2], 10);
+      if (!Number.isFinite(suffix) || suffix <= 0) {
+        res.status(400).json({ detail: '非法 Range 头' });
+        return;
+      }
+      start = Math.max(0, fileSize - suffix);
+      end = fileSize - 1;
+    } else {
+      start = parseInt(m[1], 10);
+      end = m[2] ? parseInt(m[2], 10) : fileSize - 1;
+      if (end > fileSize - 1) end = fileSize - 1; // clamp，避免 Content-Length 超过文件
+    }
+    if (start >= fileSize || end < start) {
+      res.status(416).setHeader('Content-Range', `bytes */${fileSize}`).json({ detail: 'Range 超出文件大小' });
+      return;
+    }
     res.writeHead(206, {
+      ...baseHeaders,
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': chunksize,
+      'Content-Length': end - start + 1,
       'Content-Type': mimeType,
-      // 防止 Chrome 缓存旧响应(如修复前缓存的 mkv 全文件 → 转码后仍黑屏)
-      'Cache-Control': 'no-store',
     });
-    fileStream.pipe(res);
+    pipe(fs.createReadStream(filePath, { start, end }));
   } else {
-    res.writeHead(200, {
-      'Content-Length': fileSize,
-      'Content-Type': mimeType,
-      'Accept-Ranges': 'bytes',
-      'Cache-Control': 'no-store',
-    });
-    fs.createReadStream(filePath).pipe(res);
+    res.writeHead(200, { ...baseHeaders, 'Content-Length': fileSize, 'Content-Type': mimeType });
+    pipe(fs.createReadStream(filePath));
   }
 }
 
@@ -1318,9 +1451,9 @@ app.get('/api/stream/:id', (req: Request, res: Response) => {
     return;
   }
 
-  // If remote URL, redirect or stream directly
-  if (absPath.startsWith('http://') || absPath.startsWith('https://')) {
-    res.redirect(absPath);
+  // abs_path 现在永远是本地文件路径（种子/远程条目已删除），所以不再需要 http(s) 分支。
+  if (!fs.existsSync(absPath)) {
+    res.status(404).json({ detail: '本地物理文件已丢失' });
     return;
   }
 
@@ -1329,7 +1462,13 @@ app.get('/api/stream/:id', (req: Request, res: Response) => {
   // 所以统一转 WebM(VP9+Opus)，走 Chrome 能正常渲染的路径。
   let servePath = absPath;
   if (item.ext === '.mkv') {
-    const st = fs.statSync(absPath);
+    let st: fs.Stats;
+    try {
+      st = fs.statSync(absPath);
+    } catch (err) {
+      res.status(404).json({ detail: `源文件已丢失: ${String(err)}` });
+      return;
+    }
     const job = ensureTranscoded(absPath, st.mtimeMs, st.size, item.duration);
 
     if (job.status === 'done') {
@@ -2460,6 +2599,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
 async function startServer() {
   loadLyricCache(); // 歌词缓存（网易云）持久化，重启后不重复请求
   loadCoverIndex(); // 封面缓存（covers/ + fastmusic_covers.json）
+  cleanupStaleTmpFiles(); // 清理上次被 kill 时残留的转码中间文件
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -2474,9 +2614,32 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const httpServer = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Express Media Server] 运行在 http://0.0.0.0:${PORT}`);
   });
+
+  // 优雅退出：Docker/systemd 的 SIGTERM 先落盘缓存、停转码子进程，再关闭监听。
+  // 没有这一步时 kill 可能把 fastmusic_db.json 写一半（tmp+rename 只在 save 完成时原子）。
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[Shutdown] 收到 ${signal}，保存缓存并关闭服务器…`);
+    try { saveDbToDisk(); } catch (e) { console.warn('[Shutdown] 保存 db 失败:', e); }
+    try { saveCoverIndex(); } catch (e) { console.warn('[Shutdown] 保存封面索引失败:', e); }
+    try { saveLyricCache(); } catch (e) { console.warn('[Shutdown] 保存歌词索引失败:', e); }
+    for (const proc of activeTranscodeProcs) {
+      try { proc.kill('SIGTERM'); } catch {}
+    }
+    httpServer.close(() => {
+      console.log('[Shutdown] 已关闭，进程退出');
+      process.exit(0);
+    });
+    // 兜底：连接被挂住时 8s 后强制退出
+    setTimeout(() => process.exit(0), 8000);
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 startServer();

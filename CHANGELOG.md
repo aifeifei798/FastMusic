@@ -12,8 +12,14 @@
   - 展开态音频舞台改为「唱片左 + 信息右 + 歌词横向带」两列网格（三列结构在 ~330px 舞台里会把标题挤成每行一个字）；MTV 歌词列自动收窄。
   - 播放视口与列表行支持左右滑动切歌（左滑下一首 / 右滑上一首）。
   - 页头「更多」菜单（历史 / 快捷键 / 语言），媒体类型切换收进「筛选与工具」菜单，均衡器与歌词样式面板变成全宽 sheet，控制栏适配 iOS 安全区。
+- **断点续播 + 音量记忆**: 播放每 10s 记录一次位置（`localStorage('fastmusic_resume')`，最多 300 条），重新打开同一曲目时从上次的中途位置继续（只在 >10s 且离结尾 >5s 时恢复），左列显示「继续播放 0:42」提示（`aria-live="polite"`，8s 后自动消失，手动 seek 后清除）；音量持久化到 `localStorage('fastmusic_volume')`（默认 70%）。
+- **全局快捷键扩展**: `Space` 播放/暂停、`←`/`→` 快退/快进 10 秒、`↑`/`↓` 音量、`M` 静音、`F` 全屏、`V` 切换频谱模式（走 `window._fastMusicPlayerControls`，与 `window._fastMusicAnalyser` 同一套路；播放器有焦点时跳过 Space / 方向键，避免 video.js 自带快捷键双重触发）。
+- **频谱 canvas 按容器 × DPR 尺寸**（上限 2）而不是写死 800×360，高分屏不再发糊；暂停时降到 ~15fps，系统「减少动态效果」时同样降帧，`src/index.css` 也加了 `prefers-reduced-motion` 的 CSS 动画降级。
+- **服务端稳定性**: `SIGINT` / `SIGTERM` 优雅退出（落盘索引 / 封面 / 歌词索引，kill 转码子进程，8s 兜底强制退出）；启动时清理上次被 kill 残留的 `*.fastmusic.tmp`；扫描过程中每 5s 防抖落盘一次索引（之前只在扫描结束时写一次，中途被 kill 会丢整个进度）。
+- **歌手 / 专辑列表缓存**: `/api/artists` 与 `/api/albums`（按 `artist` 参数分键）的聚合结果缓存，库增删时统一失效；实测 `/api/artists` 18ms → 7ms，`/api/albums` 36ms → 18ms。
 
 ### Changed
+- **`serveFileWithRange()` 重写**: 支持后缀 Range（`bytes=-N`）、越界返回 416（带 `Content-Range: bytes */size`）、非法 Range 返回 400、HEAD 只返回头、`statSync` 失败返回 404；加 `ETag` / `Last-Modified` / `Cache-Control: no-cache`（原来是 `no-store`），无 Range 请求命中 ETag 时返回 304（带 Range 的请求绝不 304，否则寻道失效）；流读取挂 `error` handler，文件被删 / IO 错误不再把进程崩掉。
 - **随心电台横幅精简为一行**: 徽标 + 频率 + LIVE 在同一行，全库漫游 / 纯音专线 / MTV 视听 三个频道切换与「切台 / 换一首」改为纯图标（名称只在 tooltip），窄屏只保留徽标 + 频率；横幅不再重复显示当前歌名（下方播放器已有），横幅高度从 ~100px 降到 56px。
 - **音量增强 ×2 默认开启**: 没有 `localStorage('fastmusic_boost')` 记录时 boostGain 初始为 2（默认音量仍是 70%），只有用户显式关闭过才保持关闭；窄屏控制胶囊装不下 ×2 按钮，所以开关收进均衡器面板 header。
 - **频谱模式切换改为纯图标**（柱状 / 波形 / 光晕环 / 对称 / 无），名称只出现在 `title` / `aria-label`，窄屏不再换行挤乱播放区顶栏。

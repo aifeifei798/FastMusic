@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Activity, BarChart2, Waves, Disc } from 'lucide-react';
-import { currentTheme, VISUALIZER_PALETTE } from '../utils/theme';
+import { currentTheme, VISUALIZER_PALETTE, type VisualizerPalette } from '../utils/theme';
 
 export type VisualizerMode = 'bars' | 'wave' | 'circle' | 'mirrored' | 'none';
 
@@ -51,7 +51,37 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     const timeData = new Uint8Array(bufferLength);
     const smoothBars = new Float32Array(bufferLength).fill(4);
 
-    const render = () => {
+    // canvas 的像素尺寸 = 容器实际尺寸 × DPR（上限 2）。之前写死 800×360，CSS 把它
+    // 拉伸到舞台/全屏尺寸，频谱在高分屏上明显发糊。
+    const resizeCanvas = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const w = Math.max(1, Math.round(rect.width * dpr));
+      const h = Math.max(1, Math.round(rect.height * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+    };
+    resizeCanvas();
+    const resizeObserver = new ResizeObserver(resizeCanvas);
+    resizeObserver.observe(canvas);
+
+    // 系统「减少动态效果」时降帧；暂停时也降到 ~15fps（频谱只是缓慢的呼吸动画，
+    // 60fps 白耗 CPU，手机上尤其明显）
+    const reducedMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let lastFrameAt = 0;
+
+    const render = (now: number) => {
+      const minInterval = isPlaying && !reducedMotion ? 0 : 66;
+      if (minInterval > 0 && now - lastFrameAt < minInterval) {
+        animationFrameId = requestAnimationFrame(render);
+        return;
+      }
+      lastFrameAt = now;
+
       const width = canvas.width;
       const height = canvas.height;
       ctx.clearRect(0, 0, width, height);
@@ -90,7 +120,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         bassEnergy = 0.25 + 0.15 * Math.sin(phase * 1.5);
       }
 
-      const pal = palette(); // 每帧读主题, 切换后配色自动变
+      const pal = palette(); // 每帧只读一次主题, 切换后配色自动变
       const glowRadius = Math.max(60, width * 0.45 * (0.8 + bassEnergy * 0.5));
       const gradient = ctx.createRadialGradient(centerX, centerY, 30, centerX, centerY, glowRadius);
       gradient.addColorStop(0, isPlaying ? `${pal.glow[0]}${(0.15 + bassEnergy * 0.25) * pal.glowScale})` : 'rgba(255, 255, 255, 0.02)');
@@ -101,13 +131,13 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
       // 2. Render Selected Mode
       if (visualizerMode === 'bars') {
-        renderBars(ctx, width, height, freqData, smoothBars, hasRealAudioSignal, isPlaying, phase);
+        renderBars(ctx, width, height, freqData, smoothBars, hasRealAudioSignal, isPlaying, phase, pal);
       } else if (visualizerMode === 'wave') {
-        renderWave(ctx, width, height, timeData, hasRealAudioSignal, isPlaying, phase);
+        renderWave(ctx, width, height, timeData, hasRealAudioSignal, isPlaying, phase, pal);
       } else if (visualizerMode === 'circle') {
-        renderCircular(ctx, width, height, centerX, centerY, freqData, hasRealAudioSignal, isPlaying, phase);
+        renderCircular(ctx, width, height, centerX, centerY, freqData, hasRealAudioSignal, isPlaying, phase, pal);
       } else if (visualizerMode === 'mirrored') {
-        renderMirrored(ctx, width, height, freqData, smoothBars, hasRealAudioSignal, isPlaying, phase);
+        renderMirrored(ctx, width, height, freqData, smoothBars, hasRealAudioSignal, isPlaying, phase, pal);
       }
 
       animationFrameId = requestAnimationFrame(render);
@@ -126,9 +156,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       smooth: Float32Array,
       hasSignal: boolean,
       active: boolean,
-      p: number
+      p: number,
+      pal: VisualizerPalette
     ) {
-      const pal = palette();
       const numBars = 52;
       const gap = 4;
       const barWidth = Math.max(4, (w - numBars * gap) / numBars);
@@ -192,9 +222,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       time: Uint8Array,
       hasSignal: boolean,
       active: boolean,
-      p: number
+      p: number,
+      pal: VisualizerPalette
     ) {
-      const pal = palette();
       c.lineWidth = 3;
       c.strokeStyle = active ? pal.waveActive : pal.waveIdle;
       c.beginPath();
@@ -239,9 +269,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       freq: Uint8Array,
       hasSignal: boolean,
       active: boolean,
-      p: number
+      p: number,
+      pal: VisualizerPalette
     ) {
-      const pal = palette();
       const radius = Math.min(w, h) * 0.32;
       const points = 64;
       const angleStep = (Math.PI * 2) / points;
@@ -286,9 +316,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       smooth: Float32Array,
       hasSignal: boolean,
       active: boolean,
-      p: number
+      p: number,
+      pal: VisualizerPalette
     ) {
-      const pal = palette();
       const numBars = 48;
       const gap = 3;
       const barWidth = Math.max(3, (w - numBars * gap) / numBars);
@@ -329,10 +359,11 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       }
     }
 
-    render();
+    render(performance.now());
 
     return () => {
       cancelAnimationFrame(animationFrameId);
+      resizeObserver.disconnect();
     };
   }, [isPlaying, visualizerMode]);
 

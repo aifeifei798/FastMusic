@@ -112,3 +112,17 @@
     radial-gradient(900px 460px at 78% -6%, var(--amber-glow), transparent 62%);
   opacity: var(--glow-opacity);
 }
+
+/* 系统「减少动态效果」偏好: 全站 CSS 动画/过渡降级。频谱动画的降帧在
+   AudioVisualizer 里用 matchMedia 单独处理，这里覆盖唱片旋转、spinner、
+   淡入这类 utility 动画。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

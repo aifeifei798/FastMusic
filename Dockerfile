@@ -32,5 +32,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
   CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-# tsx 直接执行 server.ts(项目没有编译产物 server.js)。用 node + 显式路径, 不依赖 node_modules/.bin 在 PATH 里
-CMD ["node", "node_modules/tsx/dist/cli.mjs", "server.ts"]
+# tsx 直接执行 server.ts(项目没有编译产物 server.js)。用 node + 显式路径, 不依赖 node_modules/.bin 在 PATH 里。
+# 注意: `node node_modules/tsx/dist/cli.mjs` 会 fork 一个子进程, docker stop 的 SIGTERM 只到父进程,
+# 优雅退出(落盘缓存/kill 转码子进程)不会执行。这里用 preflight + loader 让 server 跑在 PID 1 本身。
+CMD ["node", "--require", "./node_modules/tsx/dist/preflight.cjs", "--import", "file:///app/node_modules/tsx/dist/loader.mjs", "server.ts"]

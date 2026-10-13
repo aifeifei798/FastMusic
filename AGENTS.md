@@ -60,7 +60,9 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   semicolon separated) and then from `fastmusic_db.json`'s `dirs` array. Add real dirs via
   `POST /api/directories` or the SystemConfigModal UI (页头/页脚的「系统配置」). (`bun.lock` was also dropped — npm is the
   only toolchain; `server.sh` uses `npm install`.)
-- **查询缓存（server.ts）**：`/api/tracks` 的排序结果按 `sort:seed` 缓存（`sortCache`，最多 12 条，库增删时清空），搜索用的小写字段惰性缓存（`lowerCache`，不写进 db 文件），`.mkv` sidecar 的 stat 结果按源路径缓存（`sidecarStatCache`，`srcMtime` 变化即失效，转码完成时写入）。**任何 `MEDIA_DB` 增删必须调用 `invalidateQueryCaches()`**，否则排序/搜索会返回旧数据。实测：`sort=title` 110ms→~5ms，`ready_only=1` 90ms→~3ms。
+- **查询缓存（server.ts）**：`/api/tracks` 的排序结果按 `sort:seed` 缓存（`sortCache`，最多 12 条，库增删时清空），搜索用的小写字段惰性缓存（`lowerCache`，不写进 db 文件），`.mkv` sidecar 的 stat 结果按源路径缓存（`sidecarStatCache`，`srcMtime` 变化即失效，转码完成时写入），`/api/artists` 全量列表缓存（`artistsCache`）与 `/api/albums` 按 `artist` 参数分键缓存（`albumsCache`；缓存里存 `_coverId/_sampleId`，响应时每次重新解析 `avatar_url/cover_url`，所以封面预取新增缓存后不需要失效列表缓存）。**任何 `MEDIA_DB` 增删必须调用 `invalidateQueryCaches()`**，否则排序/搜索/歌手/专辑会返回旧数据。实测：`sort=title` 110ms→~5ms，`ready_only=1` 90ms→~3ms，`/api/artists` 18ms→7ms，`/api/albums` 36ms→18ms。扫描过程中 `scheduleDbSave()` 每 5s 防抖落盘一次 `fastmusic_db.json`（15MB 写一次 ~200ms），所以中途被 kill 不会丢整个进度。
+- **流式响应（`serveFileWithRange()`）**：支持后缀 Range（`bytes=-N`）、越界 416（带 `Content-Range: bytes */size`）、非法 Range 400、HEAD 只写头；`ETag` = `"size-mtime"`（sidecar 重新生成时自动变化），`Cache-Control: no-cache`；**只有不带 Range 的请求才可能返回 304**（带 Range 返回 304 会让播放器寻道失效）。两个 stream 路径都挂 `error` handler —— 之前文件被删 / IO 错误会走 uncaughtException 崩掉整个进程。
+- **优雅退出**：`SIGINT`/`SIGTERM` → `saveDbToDisk()` + `saveCoverIndex()` + `saveLyricCache()` → kill `activeTranscodeProcs`（所有 ffmpeg 子进程）→ `httpServer.close()`，8s 兜底 `process.exit(0)`。启动时 `cleanupStaleTmpFiles()` 删除上次被 kill 残留的 `*.fastmusic.tmp`。**坑**：`node node_modules/tsx/dist/cli.mjs server.ts` 会 fork 一个子进程，信号只到父进程，所以 Dockerfile 的 CMD 用 `node --require ./node_modules/tsx/dist/preflight.cjs --import file:///app/node_modules/tsx/dist/loader.mjs server.ts`（单进程，SIGTERM 直接命中 server）。
 - **Scan is persistent + incremental** (rewritten): the library is persisted to
   `fastmusic_db.json` next to `server.ts` (`{dirs, items[]}`, atomic tmp+rename). Startup
   calls `loadDbFromDisk()` (no more `MEDIA_DB.clear()`), so a restart keeps the index.
@@ -219,6 +221,11 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   （原来三行 ~100px）。
 - **快捷键**: `J`/`K` 上一首/下一首（走 `prevNextRef` 避免闭包里的旧 index），`S` 收藏当前曲目，`L` 歌词开关，
   `R` 随心电台，`?` 打开快捷键面板，`Esc` 关闭。之前 `L` 同时绑定收藏和歌词，所以收藏改成 `S`。
+  新增 `Space` 播放/暂停、`←`/`→` ±10s、`↑`/`↓` ±0.05 音量、`M` 静音、`F` 全屏、`V` 循环频谱模式，全部走
+  `window._fastMusicPlayerControls`（`togglePlay / seekBy / adjustVolume / toggleMute / toggleFullscreen / cycleVisualizer`，
+  与 `window._fastMusicAnalyser` 同一套路；`VideoJsPlayer` 的 effect **没有 deps**，每次渲染刷新闭包，卸载时 delete）。
+  **坑**：`Space` 与方向键在 `e.target` 位于 `.video-js` 内时跳过，否则 video.js 自带快捷键会双重触发（ seek 两次 / 音量跳两格）。
+- **断点续播 + 音量记忆（`VideoJsPlayer.tsx`）**：`timeupdate` 每 10s 写 `localStorage('fastmusic_resume')`（`{id: seconds}`，超过 300 条删最早的），只记"中途"（`t > 10` 且 `t < duration - 5`）；切曲目时 `currentTrackIdRef`/`lastResumeSaveRef` 重置。恢复在 `player.one('loadedmetadata')` 里 seek（`savedPos > 10` 且 < seed 时长 − 5），并在左列信息区显示「继续播放 0:42」（`aria-live="polite"`，8s 后自动清，`handleSeek` 也清）。音量持久化到 `localStorage('fastmusic_volume')`（默认 0.7），`volumechange` 写入，init 时 `player.volume(readSavedVolume())`。
 - **video.js copies the `<video>` element's className into its auto-created wrapper div at init, and the
   wrapper's classes never change afterwards.** `VideoJsPlayer.tsx` must keep the `<video>` classes STATIC
   (`video-js vjs-custom-theme w-full h-full`). Conditional visibility classes (e.g. `!isVideo ? 'opacity-0
@@ -244,6 +251,7 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   label/hint），渲染时**只显示图标**（文字在手机上会把顶栏挤成多行），名称走 `title` / `aria-label`；
   新增模式时改这个数组即可，i18n 表需要对应的 label/hint key。选 `none` 时 `AudioVisualizer` 完全不挂载（舞台纯黑，
   只剩左侧信息列与右侧歌词列），所以 `AudioVisualizer` 的 canvas 不存在 — 不要假设音频曲目一定有 canvas。
+- **`AudioVisualizer` 的 canvas 尺寸与帧率**：像素尺寸 = 容器 CSS 尺寸 × `min(2, devicePixelRatio)`（`resizeCanvas()` + `ResizeObserver`，cleanup 时 disconnect），不是写死的 800×360；每帧只读一次 `currentTheme()` 的 palette（`VisualizerPalette` 类型从 `src/utils/theme.ts` 导出，传给 `renderBars/renderWave/renderCircular/renderMirrored`）。暂停或 `prefers-reduced-motion` 时 `minInterval = 66ms`（~15fps，实测 playing 120 draws/2s、paused 30 draws/2s），rAF 仍然每帧请求只是跳过绘制。`src/index.css` 末尾的 `@media (prefers-reduced-motion: reduce)` 把全站 CSS 动画/过渡降级到 0.01ms（唱片旋转、spinner、淡入）。
   列表工具栏里的"随心电台"按钮已删除（`LibraryView.tsx` 不再接收 `onStartRadio`），电台入口只剩页头
   的 nav 链接与"随心电台/电台广播中"按钮，以及 `R` 键。搜索框不再被 `max-w-xl` 限制，而是 `flex-1`
   填满 tabs 与筛选控件之间的剩余宽度（tabs 组 `shrink-0`）。
