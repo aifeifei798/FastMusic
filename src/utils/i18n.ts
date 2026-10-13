@@ -268,6 +268,7 @@ const EN: Record<string, string> = {
   '取消静音 (M)': 'Unmute (M)',
   '静音 (M)': 'Mute (M)',
   '音量: {volume}%{boost}': 'Volume: {volume}%{boost}',
+  '音量': 'Volume',
   ' ×2 增强': ' ×2 boost',
   '音量增强 ×2 (已开启, 点击关闭)': 'Volume boost ×2 (on — click to disable)',
   '音量增强 ×2 (音乐增强)': 'Volume boost ×2',

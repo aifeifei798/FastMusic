@@ -989,14 +989,27 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     }
   };
 
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value);
+  // 音量: 垂直 fader。pointer events 同时覆盖鼠标和触摸，拖拽时按 y 坐标算百分比。
+  const volTrackRef = useRef<HTMLDivElement>(null);
+  const volDraggingRef = useRef<boolean>(false);
+
+  const setVolumeValue = (val: number) => {
     const player = playerRef.current;
     if (!player) return;
-    player.volume(val);
-    if (val > 0 && isMuted) {
+    const v = Math.max(0, Math.min(1, val));
+    player.volume(v);
+    if (v > 0 && isMuted) {
       player.muted(false);
     }
+  };
+
+  const volumeFromPointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    const track = volTrackRef.current;
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    if (rect.height <= 0) return;
+    const ratio = (rect.bottom - e.clientY) / rect.height;
+    setVolumeValue(Math.round(ratio * 100) / 100);
   };
 
   const setSpeed = (rate: number) => {
@@ -1842,7 +1855,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               窄屏: 用 display:contents 把右侧控件"摊平"到同一行, 否则嵌套的 flex 组
               会被挤成 162px 的窄列并溢出胶囊(按钮被 overflow-hidden 裁掉)。 */}
           <div className="flex items-center gap-2 sm:gap-3" style={isCompact ? { display: 'contents' } : undefined}>
-            {/* Volume Control */}
+            {/* Volume Control — 垂直 fader + 数字（↑/↓ 快捷键同样生效） */}
             <div className="flex items-center gap-2 group/vol">
               <button
                 onClick={toggleMute}
@@ -1856,16 +1869,58 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 )}
               </button>
 
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={isMuted ? 0 : volume}
-                onChange={handleVolumeChange}
-                className="w-16 sm:w-20 h-1 accent-accent bg-surface-2 rounded-lg cursor-pointer"
-                title={t('音量: {volume}%{boost}', { volume: Math.round(volume * 100), boost: volumeBoost ? t(' ×2 增强') : '' })}
-              />
+              <div className="flex items-center gap-1.5">
+                <div
+                  ref={volTrackRef}
+                  role="slider"
+                  aria-label={t('音量')}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
+                  tabIndex={0}
+                  title={t('音量: {volume}%{boost}', { volume: Math.round(volume * 100), boost: volumeBoost ? t(' ×2 增强') : '' })}
+                  className="relative w-2.5 h-10 rounded-full bg-surface-2 cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                  onKeyDown={(e) => {
+                    // 焦点在 fader 上时本地处理，stopPropagation 避免 window 的全局 ↑/↓ 双重调整
+                    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setVolumeValue((isMuted ? 0 : volume) + 0.05);
+                    } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setVolumeValue((isMuted ? 0 : volume) - 0.05);
+                    }
+                  }}
+                  onPointerDown={(e) => {
+                    volDraggingRef.current = true;
+                    volumeFromPointer(e);
+                  }}
+                  onPointerMove={(e) => {
+                    if (volDraggingRef.current) volumeFromPointer(e);
+                  }}
+                  onPointerUp={() => {
+                    volDraggingRef.current = false;
+                  }}
+                  onPointerLeave={() => {
+                    volDraggingRef.current = false;
+                  }}
+                >
+                  {/* 已填充部分（从下往上） */}
+                  <div
+                    className="absolute left-0 right-0 bottom-0 rounded-full bg-gradient-to-t from-accent-dim to-accent transition-all duration-150"
+                    style={{ height: `${Math.round((isMuted ? 0 : volume) * 100)}%` }}
+                  />
+                  {/* 滑块: bottom 用 calc(ratio * (100% - 14px)) 保证 0% 和 100% 时都不溢出 */}
+                  <div
+                    className="absolute left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-surface border-2 border-accent shadow-md pointer-events-none transition-all duration-150"
+                    style={{ bottom: `calc(${isMuted ? 0 : volume} * (100% - 14px))` }}
+                  />
+                </div>
+                <span className="font-mono tabular-nums text-[11px] text-ink-2 min-w-[34px] text-right">
+                  {Math.round((isMuted ? 0 : volume) * 100)}%
+                </span>
+              </div>
 
               {/* 音量增强 ×2 开关 — 窄屏控制栏空间有限，收进桌面 */}
               {!isCompact && (
