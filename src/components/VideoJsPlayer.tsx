@@ -1308,6 +1308,21 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             >
               <SkipForward className="w-4 h-4" />
             </button>
+            {onToggleFavorite && currentTrack && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleFavorite();
+                }}
+                title={isFavorited ? t('已收藏 (点击取消收藏)') : t('收藏当前曲目 (S)')}
+                aria-label={isFavorited ? t('取消收藏') : t('收藏当前曲目')}
+                className={`p-2 rounded-lg transition-colors ${
+                  isFavorited ? 'text-accent bg-accent/10 hover:bg-accent/20' : 'text-muted hover:text-accent hover:bg-surface-2/80'
+                }`}
+              >
+                <Heart className={`w-4 h-4 transition-transform active:scale-125 ${isFavorited ? 'fill-accent' : ''}`} />
+              </button>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
