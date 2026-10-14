@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 // Enable CORS and JSON parsing
 app.use(cors({
@@ -2614,8 +2615,8 @@ async function startServer() {
     });
   }
 
-  const httpServer = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Express Media Server] 运行在 http://0.0.0.0:${PORT}`);
+  const httpServer = app.listen(PORT, HOST, () => {
+    console.log(`[Express Media Server] 运行在 http://${HOST}:${PORT}`);
   });
 
   // 优雅退出：Docker/systemd 的 SIGTERM 先落盘缓存、停转码子进程，再关闭监听。

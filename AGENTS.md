@@ -8,8 +8,10 @@ was generated from Google AI Studio (`metadata.json`, `README.md` banner).
 
 - **`./server.sh start`** is the real deploy path — it auto-`npm install`s, backgrounds
   `npm run dev`, writes `.server.pid` + `server.log`, and health-checks `/api/health`.
-  Also supports `stop | restart | status | logs | install`. Default port `3000`
-  (override with `PORT=...`).
+  Also supports `stop | restart | status | logs | install`. Default listen address
+  `0.0.0.0:3000` — override with `HOST=`/`PORT=` env vars or `--host`/`--port` flags
+  (`./server.sh start --host 127.0.0.1 --port 8080`); the last used pair is remembered
+  in `.server.info` so bare `stop`/`status` still find the right port.
 - `npm run dev` / `npm run start` both run **`tsx server.ts`** — `server.ts` is executed
   directly by the `tsx` dev-dependency, it is NOT compiled to JS first.
 - `npm run lint` is just **`tsc --noEmit`** (no ESLint, no formatter, no typecheck tool

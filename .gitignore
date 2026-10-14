@@ -23,3 +23,4 @@ mtv_cache/
 # Docker 部署时本地挂载的媒体 / 数据目录
 media/
 data/
+.server.info
