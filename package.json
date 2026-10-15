@@ -14,9 +14,11 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.19",
     "@types/video.js": "^7.3.58",
     "@vitejs/plugin-react": "^6.1.1",
+    "compression": "^1.8.2",
     "cors": "^2.8.6",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",

@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -23,6 +24,8 @@ app.use(cors({
   exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length', 'Content-Type']
 }));
 app.use(express.json());
+// gzip 响应：/api/artists(764KB) /api/albums(2.3MB) /tracks 页 JSON 体积降 ~5x
+app.use(compression());
 
 // ================= 配置与支持格式 =================
 const AUDIO_EXTS = new Set(['.mp3', '.flac', '.webm', '.wav', '.ogg', '.m4a']);
@@ -152,7 +155,7 @@ function hashString(s: string): number {
 // 只需按筛选条件遍历，不再重复排序。库增删/扫描后失效。
 const sortCache = new Map<string, ServerMediaItem[]>();
 // 搜索用的小写字段缓存（惰性填充，不写进 db 文件，避免体积膨胀）
-const lowerCache = new Map<string, { t: string; a: string }>();
+const lowerCache = new Map<string, { t: string; a: string; lk: string }>();
 // 歌手/专辑列表缓存：全库遍历 34k 条 ~15-30ms，前端启动时两个请求都打，缓存后 <1ms。
 // 注意 coverIndex 变化（封面预取）不影响这些列表的字段，所以不需要失效；只有库增删才失效。
 let artistsCache: Array<{ artist_name: string; album_count: number; track_count: number; cover_track_id?: string; _coverId?: string; _sampleId?: string }> | null = null;
@@ -193,10 +196,14 @@ function getSortedItems(sort: string, seed: number): ServerMediaItem[] {
   return arr;
 }
 
-function lowerFields(item: ServerMediaItem): { t: string; a: string } {
+function lowerFields(item: ServerMediaItem): { t: string; a: string; lk: string } {
   let v = lowerCache.get(item.id);
   if (!v) {
-    v = { t: String(item.title || '').toLowerCase(), a: String(item.artist || '').toLowerCase() };
+    v = {
+      t: String(item.title || '').toLowerCase(),
+      a: String(item.artist || '').toLowerCase(),
+      lk: lyricCacheKey(item.title, item.artist),
+    };
     lowerCache.set(item.id, v);
   }
   return v;
@@ -273,15 +280,17 @@ function transcodeSummary() {
 
 // /api/tracks 的响应里附带转码状态，前端列表直接显示"已转码/转码中/排队"
 function decorateItem(item: ServerMediaItem): ServerMediaItem {
+  // abs_path 只服务端内部需要（扫描/转码/流），客户端不用，响应里剔除以省流量
+  const { abs_path, ...rest } = item;
   const info = transcodeInfo(item);
   // 歌词状态来自网易云缓存（内存 + fastmusic_lyrics.json）：只读，不触发网络请求。
   // null = 还没查过（用户没播放过这首歌），'no' = 查过但网易云没有歌词。
-  const cached = lyricCache.get(lyricCacheKey(item.title, item.artist));
+  const cached = lyricCache.get(lowerFields(item).lk);
   const lyric: 'yes' | 'no' | null = cached ? (cached.found ? 'yes' : 'no') : null;
   // cover_url 只在封面已经解析/缓存时给出（列表不会因此触发网络请求），
-  // 播放器则直接请求 /api/cover/:id，由服务端三级兜底解析。
-  const cover_url = coverIndex.has(item.id) ? `/api/cover/${item.id}` : item.cover_url;
-  return { ...item, ...(info ? { transcode: info } : {}), cover_url, lyric };
+  // 列表行用 ?size=thumb 缩略图；播放器则直接请求 /api/cover/:id（原图），由服务端三级兜底解析。
+  const cover_url = coverIndex.has(item.id) ? `/api/cover/${item.id}?size=thumb` : item.cover_url;
+  return { ...rest, ...(info ? { transcode: info } : {}), cover_url, lyric };
 }
 
 // Chrome 的 libwebm demuxer 能解 AV1/VP9（实测本机 headless+真实 Chrome 都出画面，
@@ -555,6 +564,12 @@ function cleanupStaleTmpFiles(): void {
     } catch {}
   }
   if (removed > 0) console.log(`[Transcode] 清理 ${removed} 个残留的 .fastmusic.tmp 中间文件`);
+  // 缩略图生成中途被 kill 留下的 tmp
+  try {
+    for (const f of fs.readdirSync(COVER_DIR)) {
+      if (f.endsWith('.thumb.jpg.tmp')) fs.unlinkSync(path.join(COVER_DIR, f));
+    }
+  } catch {}
 }
 
 function queueAllMkvTranscodes(): void {
@@ -1120,7 +1135,7 @@ app.get('/api/artists', (_req: Request, res: Response) => {
         artist_name: a.artist_name,
         album_count: a.album_count,
         track_count: a.track_count,
-        avatar_url: cid ? `/api/cover/${cid}` : undefined,
+        avatar_url: cid ? `/api/cover/${cid}?size=thumb` : undefined,
         cover_track_id: a.cover_track_id,
       };
     })
@@ -1139,7 +1154,7 @@ app.get('/api/albums', (req: Request, res: Response) => {
         artist_name: d.artist_name,
         album_name: d.album_name,
         track_count: d.track_count,
-        cover_url: cid ? `/api/cover/${cid}` : undefined,
+        cover_url: cid ? `/api/cover/${cid}?size=thumb` : undefined,
         cover_track_id: d.cover_track_id,
       };
     }));
@@ -1182,7 +1197,7 @@ app.get('/api/albums', (req: Request, res: Response) => {
       artist_name: d.artist_name,
       album_name: d.album_name,
       track_count: d.track_count,
-      cover_url: cid ? `/api/cover/${cid}` : undefined,
+      cover_url: cid ? `/api/cover/${cid}?size=thumb` : undefined,
       cover_track_id: d.cover_track_id,
     };
   }));
@@ -1226,8 +1241,7 @@ app.get('/api/tracks', (req: Request, res: Response) => {
       if (info && info.status !== 'ready') continue;
     }
     if (hasLyrics) {
-      const lc = lyricCache.get(lyricCacheKey(item.title, item.artist));
-      if (!lc || !lc.found) continue;
+      if (!lyricFoundKeys.has(lowerFields(item).lk)) continue;
     }
     results.push(item);
   }
@@ -1559,6 +1573,8 @@ interface LyricEntry {
 }
 
 const lyricCache = new Map<string, LyricEntry>();
+// 歌词命中 key 的 O(1) 集合：has_lyrics=1 筛选不再每次全库算 key（33k 条 ~50ms）。
+const lyricFoundKeys = new Set<string>();
 
 function lyricCacheKey(title: string, artist: string): string {
   return `${normalizeText(title)}|${normalizeText(artist)}`;
@@ -1594,6 +1610,7 @@ function storeLyric(key: string, result: LyricResult): void {
     }
   }
   lyricCache.set(key, { found, file, fetched_at: Date.now() });
+  if (found) lyricFoundKeys.add(key); else lyricFoundKeys.delete(key);
   scheduleLyricSave();
 }
 
@@ -1623,6 +1640,7 @@ function loadLyricCache(): void {
         continue;
       }
       lyricCache.set(k, { found: true, file, fetched_at: v.fetched_at || Date.now() });
+      lyricFoundKeys.add(k);
       hits++;
     }
     // 迁移后重写索引（只存元信息，文本在 lyrics/ 里）
@@ -1920,6 +1938,43 @@ function imageMime(ext: string): string {
   if (ext === '.png') return 'image/png';
   if (ext === '.webp') return 'image/webp';
   return 'image/jpeg';
+}
+
+// 列表行 / 卡片缩略图：128px 版本（原图 500x500 平均 75KB，缩略图 ~4KB）。
+// 懒生成：第一次 ?size=thumb 请求时用 ffmpeg 生成并落盘，之后直接读文件。
+const THUMB_SIZE = 128;
+const thumbInFlight = new Map<string, Promise<boolean>>();
+function thumbFile(id: string): string {
+  return path.join(COVER_DIR, `${id}.thumb.jpg`);
+}
+function ensureThumb(id: string, ext: string): Promise<boolean> {
+  const out = thumbFile(id);
+  if (fs.existsSync(out)) return Promise.resolve(true);
+  const existing = thumbInFlight.get(id);
+  if (existing) return existing;
+  const job = new Promise<boolean>((resolve) => {
+    const tmp = `${out}.tmp`;
+    const proc = spawn('ffmpeg', [
+      '-v', 'error',
+      '-i', coverFile(id, ext),
+      '-vf', `scale=${THUMB_SIZE}:${THUMB_SIZE}:force_original_aspect_ratio=decrease,pad=${THUMB_SIZE}:${THUMB_SIZE}:(ow-iw)/2:(oh-ih)/2:black`,
+      '-frames', '1',
+      '-f', 'image2', tmp,
+    ]);
+    proc.on('close', (code) => {
+      if (code === 0 && fs.existsSync(tmp)) {
+        fs.renameSync(tmp, out);
+        resolve(true);
+      } else {
+        try { fs.unlinkSync(tmp); } catch {}
+        resolve(false);
+      }
+    });
+    proc.on('error', () => resolve(false));
+  });
+  thumbInFlight.set(id, job);
+  job.then(() => thumbInFlight.delete(id));
+  return job;
 }
 
 function loadCoverIndex(): void {
@@ -2279,6 +2334,16 @@ app.get('/api/cover/:id', async (req: Request, res: Response) => {
       res.status(404).json({ detail: '封面缓存文件丢失' });
       return;
     }
+    // ?size=thumb → 128px 缩略图（列表行/卡片用），懒生成，失败则退回原图
+    if (req.query.size === 'thumb') {
+      if (await ensureThumb(item.id, entry.ext)) {
+        res.set('Content-Type', 'image/jpeg');
+        res.set('Cache-Control', 'public, max-age=31536000');
+        res.set('X-Cover-Source', entry.source);
+        res.sendFile(thumbFile(item.id));
+        return;
+      }
+    }
     res.set('Content-Type', imageMime(entry.ext));
     res.set('Cache-Control', 'public, max-age=31536000');
     res.set('X-Cover-Source', entry.source);
@@ -2308,7 +2373,7 @@ app.post('/api/cover/prefetch', async (req: Request, res: Response) => {
           continue;
         }
         const entry = await resolveCover(item, true);
-        covers[id] = entry ? `/api/cover/${id}` : null;
+        covers[id] = entry ? `/api/cover/${id}?size=thumb` : null;
       }
     }
   );

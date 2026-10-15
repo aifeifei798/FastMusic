@@ -153,28 +153,41 @@ export default function App() {
     };
   }, [moreMenuOpen]);
 
+  // 歌手/专辑列表不依赖搜索/排序/筛选：只在启动时拉一次，扫描后（force）或切换歌手时才重新拉。
+  // 之前每次筛选变化都重新下载全量 artists(764KB)+albums(2.3MB)，是最大的重复流量。
+  const artistsLoadedRef = useRef(false);
+  const loadEntities = useCallback(async (force = false) => {
+    try {
+      const [artistData, albumData] = await Promise.all([
+        artistsLoadedRef.current && !force ? Promise.resolve(null) : mediaApi.getArtists(),
+        mediaApi.getAlbums(selectedArtist || undefined),
+      ]);
+      if (artistData) {
+        setArtists(artistData);
+        artistsLoadedRef.current = true;
+      }
+      setAlbums(albumData);
+    } catch (err) {
+      console.error('Failed to load artist/album data:', err);
+    }
+  }, [selectedArtist]);
+
   // Load Initial Library Data (First batch: limit=30, offset=0)
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [artistData, albumData, trackData] = await Promise.all([
-        mediaApi.getArtists(),
-        mediaApi.getAlbums(selectedArtist || undefined),
-        mediaApi.getTracks({
-          artist: selectedArtist || undefined,
-          album: selectedAlbum || undefined,
-          media_type: mediaTypeFilter === 'all' ? undefined : mediaTypeFilter,
-          search: searchQuery || undefined,
-          sort: sort === 'default' ? undefined : sort,
-          ready_only: readyOnly || undefined,
-          has_lyrics: hasLyricsOnly || undefined,
-          limit: 30,
-          offset: 0,
-        }),
-      ]);
+      const trackData = await mediaApi.getTracks({
+        artist: selectedArtist || undefined,
+        album: selectedAlbum || undefined,
+        media_type: mediaTypeFilter === 'all' ? undefined : mediaTypeFilter,
+        search: searchQuery || undefined,
+        sort: sort === 'default' ? undefined : sort,
+        ready_only: readyOnly || undefined,
+        has_lyrics: hasLyricsOnly || undefined,
+        limit: 30,
+        offset: 0,
+      });
 
-      setArtists(artistData);
-      setAlbums(albumData);
       setTracks(trackData.items);
       setTotalTracks(trackData.total);
       setHasMore(trackData.has_more);
@@ -191,6 +204,12 @@ export default function App() {
       setIsLoading(false);
     }
   }, [selectedArtist, selectedAlbum, mediaTypeFilter, searchQuery, readyOnly, hasLyricsOnly, sort]);
+
+  // 扫描/库变化后的全量刷新：曲目 + 歌手/专辑实体
+  const refreshAll = useCallback(() => {
+    loadData();
+    loadEntities(true);
+  }, [loadData, loadEntities]);
 
   // Load More Tracks on scroll near bottom (limit=30, offset=currentLength)
   const handleLoadMore = useCallback(async () => {
@@ -288,6 +307,11 @@ export default function App() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // 歌手/专辑实体：启动时 + 切换歌手时（loadEntities 依赖 selectedArtist）重新拉
+  useEffect(() => {
+    loadEntities();
+  }, [loadEntities]);
 
   // 播放序列 = 当前正在浏览的列表（曲目列表 / 收藏列表 / 电台随机池）。
   // 列表变化（切筛选、搜索、加载更多、切标签）时重新定位当前曲目在列表中的位置。
@@ -847,7 +871,7 @@ export default function App() {
       <SystemConfigModal
         isOpen={isServerModalOpen}
         onClose={() => setIsServerModalOpen(false)}
-        onRefreshData={loadData}
+        onRefreshData={refreshAll}
       />
 
       {/* Keyboard Shortcuts Modal */}
