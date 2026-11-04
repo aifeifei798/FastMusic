@@ -243,6 +243,12 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   // 进度条 / 音量推杆拖拽标记用 ref: init effect 里的 handler 闭包会捕获旧的 state 值
   const progressDraggingRef = useRef<boolean>(false);
   const volDraggingRef = useRef<boolean>(false);
+  // 浮层外点关闭用: 控制胶囊(桌面/折叠)与各浮层的 ref, pointerdown 落在这些元素之外 → 全部收起
+  const controlCapsuleRef = useRef<HTMLDivElement | null>(null);
+  const compactCapsuleRef = useRef<HTMLDivElement | null>(null);
+  const volumeFlyoutRef = useRef<HTMLDivElement | null>(null);
+  const eqFlyoutRef = useRef<HTMLDivElement | null>(null);
+  const lyricFlyoutRef = useRef<HTMLDivElement | null>(null);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
   const [showControls, setShowControls] = useState<boolean>(true);
@@ -1109,15 +1115,41 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     }
   };
 
-  // 音量面板: Esc 关闭
+  // 浮层互斥: 打开一个面板时收起其他三个 (都锚在胶囊上方/附近, 同时开着会互相叠压)
+  const togglePanel = (panel: 'volume' | 'eq' | 'lyric' | 'speed') => {
+    setShowVolumePanel((v) => (panel === 'volume' ? !v : false));
+    setShowEqPanel((v) => (panel === 'eq' ? !v : false));
+    setShowLyricSettings((v) => (panel === 'lyric' ? !v : false));
+    setShowSpeedMenu((v) => (panel === 'speed' ? !v : false));
+  };
+
+  // 浮层统一收起: 任一面板打开时, Esc 全收起; 点胶囊与浮层以外的地方也收起。
+  // 手机没有 Esc, 外点关闭是主要收起方式; 倍速菜单和歌词样式面板没有关闭按钮。
   useEffect(() => {
-    if (!showVolumePanel) return;
+    if (!showVolumePanel && !showEqPanel && !showLyricSettings && !showSpeedMenu) return;
+    const closeAll = () => {
+      setShowVolumePanel(false);
+      setShowEqPanel(false);
+      setShowLyricSettings(false);
+      setShowSpeedMenu(false);
+    };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowVolumePanel(false);
+      if (e.key === 'Escape') closeAll();
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      const inside = [controlCapsuleRef, compactCapsuleRef, volumeFlyoutRef, eqFlyoutRef, lyricFlyoutRef]
+        .some((r) => r.current && r.current.contains(target));
+      if (!inside) closeAll();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [showVolumePanel]);
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [showVolumePanel, showEqPanel, showLyricSettings, showSpeedMenu]);
 
   const setSpeed = (rate: number) => {
     const player = playerRef.current;
@@ -1275,7 +1307,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       {/* 窄屏折叠态: 一条"正在播放"胶囊（封面 + 标题/歌手 + 上一首/播放/下一首 + 展开）。
           <video> 仍在 DOM 里（视口只是 opacity-0），所以音频照常播放。 */}
       {compactCollapsed && (
-        <div className="flex items-center gap-2.5 px-3 py-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div ref={compactCapsuleRef} className="flex items-center gap-2.5 px-3 py-2 shrink-0" onClick={(e) => e.stopPropagation()}>
           <div className={`relative w-11 h-11 rounded-full bg-vinyl border-2 border-line-strong/70 flex items-center justify-center overflow-hidden shrink-0 ${isPlaying ? 'vinyl-spin' : ''}`}>
             <svg viewBox="0 0 44 44" aria-hidden="true" className="absolute inset-0 w-full h-full">
               <circle cx="22" cy="22" r="20" fill="var(--color-vinyl)" />
@@ -1355,8 +1387,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setShowEqPanel(false);
-                setShowVolumePanel((prev) => !prev);
+                togglePanel('volume');
               }}
               aria-label={t('音量调节')}
               title={t('音量: {volume}%{boost}', { volume: Math.round(volume * 100), boost: volumeBoost ? t(' ×2 增强') : '' })}
@@ -1712,11 +1743,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                           data-lyric-idx={i}
                           // 字号来自歌词设置(动态值用 inline style, 其余全部是 utility 类)
                           style={{ fontSize: d === 0 ? lyricFont + 3 : lyricFont }}
-                          className={`font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.5] tracking-[0.01em] ${isVideo ? 'text-lyric-ink/34 [text-shadow:0_1px_6px_rgba(0,0,0,0.55)]' : 'text-ink/34 [text-shadow:var(--lyric-shadow)]'} transition-[color,opacity] duration-300 ${
+                          className={`font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.5] tracking-[0.01em] ${isVideo ? 'text-lyric-ink/34 [text-shadow:0_1px_6px_rgba(0,0,0,0.55)]' : 'text-ink/34 [text-shadow:var(--lyric-shadow),0_0_12px_var(--color-app),0_0_28px_var(--color-app)]'} transition-[color,opacity] duration-300 ${
                             d === 0
                               ? isVideo
                                 ? 'text-lyric-ink font-semibold pl-2.5 border-l-2 border-accent/55 [text-shadow:0_1px_8px_rgba(0,0,0,0.6),0_0_22px_var(--lyric-glow)]'
-                                : 'text-ink font-semibold pl-2.5 border-l-2 border-accent/55 [text-shadow:var(--lyric-shadow),0_0_22px_var(--lyric-glow)]'
+                                : 'text-ink font-semibold pl-2.5 border-l-2 border-accent/55 [text-shadow:var(--lyric-shadow),0_0_12px_var(--color-app),0_0_28px_var(--color-app),0_0_22px_var(--lyric-glow)]'
                               : d < 0
                               ? 'opacity-50'
                               : 'opacity-[0.85]'
@@ -1757,14 +1788,14 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 <div className="flex flex-col gap-1.5">
                   <p
                     style={{ fontSize: lyricFont + 3 }}
-                    className="font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.4] font-semibold text-ink break-words [text-shadow:var(--lyric-shadow)]"
+                    className="font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.4] font-semibold text-ink break-words [text-shadow:var(--lyric-shadow),0_0_12px_var(--color-app),0_0_28px_var(--color-app)]"
                   >
                     {lyricLines[lyricIdx]?.text}
                   </p>
                   {lyricLines[lyricIdx + 1] && (
                     <p
                       style={{ fontSize: lyricFont }}
-                      className="font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.4] text-ink/55 break-words"
+                      className="font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.4] text-ink/55 break-words [text-shadow:0_0_10px_var(--color-app),0_0_24px_var(--color-app)]"
                     >
                       {lyricLines[lyricIdx + 1].text}
                     </p>
@@ -1778,7 +1809,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
       {/* 歌词样式面板 — 字号 + (视频时) 歌词列宽度, 持久在 localStorage */}
       {showLyricSettings && (
-        <div className={`absolute z-40 rounded-xl bg-app/95 border border-line p-3 flex flex-col gap-2 shadow-2xl ${isCompact ? 'top-2 left-2 right-2' : 'right-4 bottom-16 w-64'}`}>
+        <div ref={lyricFlyoutRef} className={`absolute z-40 rounded-xl bg-app/95 border border-line p-3 flex flex-col gap-2 shadow-2xl ${isCompact ? 'top-2 left-2 right-2' : 'right-4 bottom-16 w-64'}`}>
           <div className="text-[11px] font-semibold text-ink-3">{t('歌词样式')}</div>
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-muted-2">{t('字号')}</span>
@@ -1833,6 +1864,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           静音 + 横向推杆 + 百分比 + ×2(折叠态唯一的 ×2 入口) + 关闭, 挂在胶囊下方 */}
       {showVolumePanel && (isCompact && compactCollapsed ? (
         <div
+          ref={volumeFlyoutRef}
           className="absolute z-40 left-2 right-2 top-[96px] rounded-xl bg-app/90 border border-line p-1.5 flex items-center gap-1.5 shadow-2xl backdrop-blur-sm"
           onClick={(e) => e.stopPropagation()}
         >
@@ -1891,7 +1923,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           </button>
         </div>
       ) : (
-        <div className={`absolute z-40 rounded-xl bg-app/90 border border-line p-3 flex flex-col gap-2 shadow-2xl backdrop-blur-sm ${isCompact ? 'inset-2' : 'left-1/2 -translate-x-1/2 bottom-[104px] w-[360px] max-h-[calc(100%-112px)]'}`}>
+        <div ref={volumeFlyoutRef} className={`absolute z-40 rounded-xl bg-app/90 border border-line p-3 flex flex-col gap-2 shadow-2xl backdrop-blur-sm ${isCompact ? 'inset-2' : 'left-1/2 -translate-x-1/2 bottom-[104px] w-[360px] max-h-[calc(100%-112px)]'}`}>
           <div className="flex items-center justify-between">
             <span className="text-xs text-ink-2 flex items-center gap-1">
               <Volume2 className="w-3.5 h-3.5" />
@@ -2030,7 +2062,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       {/* 均衡器 (Equalizer) 面板 — 10段 Web Audio 均衡器，预设 + 手动调节 */}
       {/* 均衡器面板贴在控制胶囊上方(胶囊高约 84px + bottom-3), 避免重叠 */}
       {showEqPanel && (
-        <div className={`absolute z-40 overflow-y-auto rounded-xl bg-app/95 border border-line p-3 flex flex-col gap-2 shadow-2xl ${isCompact ? 'left-2 right-2 bottom-[140px] max-h-[calc(100%-152px)]' : 'left-4 bottom-[104px] w-72 max-h-[calc(100%-112px)]'}`}>
+        <div ref={eqFlyoutRef} className={`absolute z-40 overflow-y-auto rounded-xl bg-app/95 border border-line p-3 flex flex-col gap-2 shadow-2xl ${isCompact ? 'left-2 right-2 bottom-[140px] max-h-[calc(100%-152px)]' : 'left-4 bottom-[104px] w-72 max-h-[calc(100%-112px)]'}`}>
           {/* 面板 header: 标题 + 状态 + 手动/平 reset + 均衡器 on/off */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-ink-2 flex items-center gap-1">
@@ -2119,6 +2151,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           窄屏折叠态不渲染: 折叠胶囊自带 上一首/播放/下一首/展开 */}
       {!compactCollapsed && (
       <div
+        ref={controlCapsuleRef}
         className={`absolute left-1/2 -translate-x-1/2 z-30 w-full max-w-[min(100%,900px)] rounded-xl bg-pill border border-line-strong/40 backdrop-blur-md shadow-2xl px-3 py-2 transition-opacity duration-300 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
@@ -2215,8 +2248,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setShowEqPanel(false);
-                setShowVolumePanel((prev) => !prev);
+                togglePanel('volume');
               }}
               aria-label={t('音量调节')}
               title={t('音量: {volume}%{boost}', { volume: Math.round(volume * 100), boost: volumeBoost ? t(' ×2 增强') : '' })}
@@ -2286,7 +2318,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             {!isCompact && (
               <div className="relative">
                 <button
-                  onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                  onClick={() => togglePanel('speed')}
+                  aria-label={t('播放速度')}
+                  title={t('播放速度')}
                   className="px-2 py-1 rounded bg-surface hover:bg-surface-2 border border-line-strong text-xs font-mono text-ink-3 hover:text-ink transition-colors"
                 >
                   {playbackRate}x
@@ -2354,7 +2388,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setShowLyricSettings((v) => !v);
+                togglePanel('lyric');
               }}
               title={t('歌词字号与宽度')}
               className={`px-2 py-1 rounded-lg text-[11px] font-semibold hover:bg-surface-2/80 transition-colors ${
@@ -2368,9 +2402,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                // 两个面板都贴在胶囊上方，同时打开会重叠
-                setShowVolumePanel(false);
-                setShowEqPanel(!showEqPanel);
+                togglePanel('eq');
               }}
               title={t('均衡器 (Equalizer) 面板')}
               className={`p-2 rounded-lg hover:bg-surface-2/80 transition-colors ${

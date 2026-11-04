@@ -468,6 +468,14 @@ const EN: Record<string, string> = {
   '扫描完成：新增 {added}，复用 {skipped}，库共 {total} 条目':
     'Scan finished: {added} new, {skipped} reused, {total} entries in the library',
   '转码失败: {error}': 'Transcode failed: {error}',
+  // a11y 可访问名称 (aria-label)
+  '播放速度': 'Playback speed',
+  '列表排序': 'Sort tracks',
+  '排序方式': 'Sort by',
+  '在播放历史中搜索': 'Search play history',
+  '服务端地址': 'Server address',
+  '新增扫描目录路径': 'New scan directory path',
+  '搜索曲目、歌手或专辑': 'Search tracks, artists or albums',
 };
 
 // 服务端返回的提示里已经插入了动态数字，无法直接作为 t() 的 key，

@@ -89,6 +89,7 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
             <input
               type="text"
               placeholder={t('在播放历史中搜索...')}
+              aria-label={t('在播放历史中搜索')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 bg-transparent text-xs text-ink-2 placeholder-muted-2 focus:outline-none"

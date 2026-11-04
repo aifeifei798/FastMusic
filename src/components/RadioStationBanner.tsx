@@ -60,7 +60,7 @@ export const RadioStationBanner: React.FC<RadioStationBannerProps> = ({
           </span>
         </div>
 
-        <span className="text-[11px] font-bold tracking-wider uppercase text-accent font-mono whitespace-nowrap">
+        <span className="text-[11px] font-bold tracking-wider text-accent font-mono whitespace-nowrap">
           <span className="hidden sm:inline">FastMusic FM · </span>{freq}
         </span>
         <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-accent/20 text-accent-soft border border-accent/30">
@@ -76,7 +76,7 @@ export const RadioStationBanner: React.FC<RadioStationBannerProps> = ({
             onClick={() => onSwitchChannel(channel)}
             title={t(label)}
             aria-label={t(label)}
-            className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
               activeChannel === channel
                 ? 'bg-accent text-white shadow-sm'
                 : 'text-muted hover:text-ink hover:bg-surface-2/60'
@@ -92,7 +92,7 @@ export const RadioStationBanner: React.FC<RadioStationBannerProps> = ({
         onClick={onNextRandom}
         title={t('切台 / 换一首')}
         aria-label={t('切台 / 换一首')}
-        className="p-1.5 rounded-lg bg-gradient-to-r from-amber to-accent text-white shadow-md shadow-amber/30 transition-all active:scale-95 cursor-pointer shrink-0"
+        className="p-1.5 rounded-lg bg-gradient-to-r from-amber to-accent text-white shadow-md shadow-amber/30 transition-[transform,background-color,box-shadow] active:scale-95 cursor-pointer shrink-0"
       >
         <SkipForward className="w-4 h-4 fill-white" />
       </button>

@@ -461,6 +461,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <input
               type="text"
               placeholder={t('搜索曲目、歌手或专辑...')}
+              aria-label={t('搜索曲目、歌手或专辑')}
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               className="w-full pl-9 pr-8 py-2 rounded-xl bg-surface border border-line text-sm text-ink-2 placeholder-muted-2 focus:outline-none focus:border-accent/80 transition-colors"
@@ -631,6 +632,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   {onSortChange && (
                     <select
                       value={sort}
+                      aria-label={t('列表排序')}
                       onChange={(e) => onSortChange(e.target.value as TrackSort)}
                       title={t('列表排序（服务端 /api/tracks 的 sort 参数，默认 = 扫描索引顺序）')}
                       className="px-2.5 py-1.5 text-xs rounded-lg bg-surface border border-line text-ink-3 hover:text-ink cursor-pointer"
@@ -781,7 +783,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   这样小屏不会把列表裁掉, 页脚始终可见 */}
               <div ref={scrollBoxRef} onScroll={handleScrollBox} className={`overflow-y-auto flex-1 min-h-[140px] ${SCROLLBAR_CLASSES}`}>
               {/* Header row with performance indicator — pinned while the rows scroll */}
-              <div className={`sticky top-0 z-10 hidden sm:grid grid-cols-12 gap-4 px-5 ${rowDensity === 'compact' ? 'py-2' : 'py-3'} text-[11px] font-semibold text-muted tracking-wider uppercase bg-surface/70 border-b border-line/60`}>
+              <div className={`sticky top-0 z-10 hidden sm:grid grid-cols-12 gap-4 px-5 ${rowDensity === 'compact' ? 'py-2' : 'py-3'} text-[11px] font-semibold text-muted bg-surface/70 border-b border-line/60`}>
                 <div className="col-span-1 text-center">#</div>
                 <div className="col-span-5">{t('曲目标题 / 艺术家')}</div>
                 {rowDensity === 'compact' ? (
@@ -1001,6 +1003,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             </span>
             <select
               value={entitySort}
+              aria-label={t('排序方式')}
               onChange={(e) => setEntitySort(e.target.value as 'name' | 'count')}
               className="px-2 py-1 rounded-lg bg-surface border border-line text-xs text-ink-3 cursor-pointer"
             >
@@ -1069,6 +1072,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             </span>
             <select
               value={entitySort}
+              aria-label={t('排序方式')}
               onChange={(e) => setEntitySort(e.target.value as 'name' | 'count')}
               className="px-2 py-1 rounded-lg bg-surface border border-line text-xs text-ink-3 cursor-pointer"
             >
@@ -1151,7 +1155,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           ) : (
             <>
               {/* Header row */}
-              <div className="hidden sm:grid grid-cols-12 gap-4 px-5 py-3 text-[11px] font-semibold text-muted tracking-wider uppercase bg-surface/70 border-b border-line/60">
+              <div className="hidden sm:grid grid-cols-12 gap-4 px-5 py-3 text-[11px] font-semibold text-muted bg-surface/70 border-b border-line/60">
                 <div className="col-span-1 text-center">#</div>
                 <div className="col-span-5">{t('曲目标题 / 艺术家')}</div>
                 <div className="col-span-3">{t('所属专辑')}</div>

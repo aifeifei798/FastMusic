@@ -608,7 +608,7 @@ export default function App() {
   prevNextRef.current = { prev: handlePrevTrack, next: handleNextTrack };
 
   return (
-    <div className="h-screen overflow-hidden bg-app text-ink flex flex-col font-sans selection:bg-accent/30 selection:text-accent-soft">
+    <div className="h-dvh overflow-hidden bg-app text-ink flex flex-col font-sans selection:bg-accent/30 selection:text-accent-soft">
       {/* 品牌色光晕: 页头后面的一层 rose→amber 径向渐变, 让深浅页面都呼应徽标的渐变 */}
       <div className="fixed inset-0 -z-10 theme-wash pointer-events-none" aria-hidden="true" />
 

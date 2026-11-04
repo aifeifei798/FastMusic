@@ -510,6 +510,7 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
               <input
                 type="text"
                 value={baseUrl}
+                aria-label={t('服务端地址')}
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder={t('留空为同源直连 (推荐) 或输入自定义地址如 http://localhost:3000')}
                 className="flex-1 px-3 py-2 bg-surface border border-line rounded-xl text-ink-2 font-mono text-xs focus:outline-none focus:border-accent"
@@ -592,6 +593,7 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
               <input
                 type="text"
                 value={newDirPath}
+                aria-label={t('新增扫描目录路径')}
                 onChange={(e) => setNewDirPath(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleAddDirectory();

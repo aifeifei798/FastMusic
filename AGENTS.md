@@ -194,7 +194,7 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   - 中文媒体标题/歌手名不是 UI 文案，保持原样。
 - **深浅主题（theme tokens）**: 全站颜色都是 `src/index.css` 里的语义 token —— `@theme` 块定义深色默认值（`app / surface / surface-2 / elevated / line / line-strong / line-soft / ink / ink-2 / ink-3 / muted / muted-2 / faint / accent / accent-soft / accent-dim / amber / amber-dim / emerald / emerald-dim / sky / sky-dim / danger / danger-dim / purple / purple-dim / stage / viewport / vinyl / lyric-ink / pill`），`[data-theme="light"]` 只覆盖变量值，组件类名不变。**新代码不要写 `neutral-950` / `rose-400` 这类硬编码色**（`bg-black/75` 弹窗遮罩、accent 按钮上的 `text-white` 是例外）。主题状态：`localStorage('fastmusic_theme')`（默认跟随 `prefers-color-scheme`），`App.tsx` 的 effect 写 `document.documentElement.dataset.theme`；`index.html` 的内联脚本在首屏前读 localStorage 设置 `data-theme`，避免 FOUC。坑：
   - canvas / JS 里的颜色不走 token：`src/utils/theme.ts` 的 `currentTheme()` + `VISUALIZER_PALETTE`（含 `glowScale`，浅色主题光晕减半）+ `coverGradient()`，`AudioVisualizer` 每帧读一次，切主题后自动变。
-  - 视频相关：`bg-viewport`（`<video>` 视口）两个主题都保持深色（浅色主题 `#101014`），只有舞台 `bg-stage` 变浅；压在画面上的歌词文字永远用 `text-lyric-ink`（浅色文字 + 暗底 scrim），音频歌词用 `text-ink` + `var(--lyric-shadow)`。
+  - 视频相关：`bg-viewport`（`<video>` 视口）两个主题都保持深色（浅色主题 `#101014`），只有舞台 `bg-stage` 变浅；压在画面上的歌词文字永远用 `text-lyric-ink`（浅色文字 + 暗底 scrim），音频歌词用 `text-ink` + `var(--lyric-shadow)`。音频歌词没有背景 scrim（黑 scrim 会破坏浅色舞台），靠 **`var(--color-app)` 底色 text-shadow 光晕**（`0_0_12px/28px var(--color-app)` 追加在 shadow 链上）把频谱柱从文字后面"熏"开——光晕颜色跟随主题，深色主题压暗红柱、浅色主题自动变白。
   - 控制胶囊用 `bg-pill`（深色半透明暗玻璃 / 浅色半透明白玻璃）。
 - **品牌徽标（Logo）**: 页头/页脚的徽标是内联 SVG 组件 `src/components/Logo.tsx`（渐变圆角方 + 黑胶同心纹路 + 白色闪电），几何与 `public/logo-mark.svg`、`public/favicon.svg`（16px 简化版：无内圈纹路、闪电加粗）一致 —— 改形状时三处要同步。`public/` 是 Vite 默认静态目录（dev 直接 served，build 后拷进 `dist/`），`/favicon.svg`、`/logo.svg`（白色文字 lockup，深色页面用）、`/logo-dark.svg`（深色文字 lockup，浅色页面用）、`/logo-light.svg`（Apple 风浅色主题 lockup：近黑徽标 `#1d1d1f` + 近黑 wordmark，无渐变）、`/logo-mark-light.svg`、`/logo-mark-mono.svg` / `/logo-mark-line.svg`（`currentColor` 单色 / 线条版）都可直接访问；`index.html` 的 `<link rel="icon">` 与 `og:image` 指向它们 / `docs/logo.png`（另有 `docs/logo-light.png`、`docs/logo-dark.png`、`docs/logo-light-lockup.png`、`docs/logo-mark-light.png` 位图导出）。
 - **样式全部用 Tailwind utility 类**: `src/index.css` 只有两个 `@import`（tailwindcss + video.js 官方 CSS），
@@ -229,6 +229,11 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   与 `window._fastMusicAnalyser` 同一套路；`VideoJsPlayer` 的 effect **没有 deps**，每次渲染刷新闭包，卸载时 delete）。
   **坑**：`Space` 与方向键在 `e.target` 位于 `.video-js` 内时跳过，否则 video.js 自带快捷键会双重触发（ seek 两次 / 音量跳两格）。
 - **断点续播 + 音量记忆（`VideoJsPlayer.tsx`）**：断点续播开关持久在 `localStorage('fastmusic_resume_enabled')`，默认关闭；只有开启后 `timeupdate` 才每 10s 写 `localStorage('fastmusic_resume')`（`{id: seconds}`，超过 300 条删最早的），只记"中途"（`t > 10` 且 `t < duration - 5`）；切曲目时 `currentTrackIdRef`/`lastResumeSaveRef` 重置。恢复在 `player.one('loadedmetadata')` 里 seek（`savedPos > 10` 且 < seed 时长 − 5），并在左列信息区显示「继续播放 0:42」（`aria-live="polite"`，8s 后自动清，`handleSeek` 也清）。`SystemConfigModal` 里的开关写 localStorage 并派发 `fastmusic:resume-enabled-change`，播放器监听后更新 `resumeEnabledRef`；关闭时清除当前「继续播放」提示。音量持久化到 `localStorage('fastmusic_volume')`（默认 0.7），`volumechange` 写入，init 时 `player.volume(readSavedVolume())`。**音量入口统一为「图标 + 百分比」按钮**，点击弹出大推杆面板；桌面不再内联 10×40 小推杆。面板 header（标题 + ×2 + 静音 + `X`）+ 一行 `flex-1 min-h-0`（大推杆 `w-8`，窄屏 `height:100%` 铺满播放区，桌面固定 `height:120px` 浮在控制胶囊上方，带 25/50/75 刻度，滑块 `w-6 h-6`）+ 右侧大数字 `text-3xl` / 20-40-60-80-100% 预设 / −5% +5% / 提示文案。窄屏展开态面板 `absolute z-40 inset-2` 铺满播放区；窄屏折叠态面板是**单行迷你音量条**（`absolute z-40 left-2 right-2 top-[96px]`，根容器临时 `overflow-visible`，不展开播放器也能调音量），一行排布 静音按钮 + 横向推杆（`flex-1 h-8`，`volumeFromPointer` 加了 `horizontal` 参数按 `clientX` 算比例）+ 百分比 + ×2（折叠态唯一的 ×2 入口）+ 关闭，预设/±5%/提示文案只在展开态面板里；桌面面板 `absolute z-40 left-1/2 -translate-x-1/2 bottom-[104px] w-[360px] max-h-[calc(100%-112px)]`，避免遮住画面。推杆 `onPointerDown/Move/Up/Leave` 用 `volDraggingRef` 判断拖拽（竖向按 `rect.bottom - clientY`、横向按 `clientX` 算比例，1% 精度），`role="slider"` + `tabIndex=0`，本地 `onKeyDown` 处理 ↑↓（必须 `e.stopPropagation()`，否则 window 的全局 ↑/↓ 会双重调整）。`showVolumePanel` 与 `showEqPanel` 互斥（打开一个自动关另一个，两个都锚在胶囊上方会重叠），`Esc` 关闭音量面板。
+**播放器浮层体系统一规则（`togglePanel(panel)` + 全局监听）**：音量 / 均衡器 / 歌词样式 / 倍速四个浮层
+**互相排斥**（`togglePanel('volume'|'eq'|'lyric'|'speed')`，打开一个收起其余三个——之前歌词样式与倍速能和别的同时开着）；
+任一浮层打开时 `Esc` 全部收起，`pointerdown` 落在胶囊与浮层 ref（`controlCapsuleRef` / `compactCapsuleRef` /
+`volumeFlyoutRef` / `eqFlyoutRef` / `lyricFlyoutRef`）之外也全部收起（手机没有 Esc，外点是主要收起方式；
+倍速菜单和歌词样式面板没有关闭按钮）。倍速按钮有 `aria-label="播放速度"`。
 - **video.js copies the `<video>` element's className into its auto-created wrapper div at init, and the
   wrapper's classes never change afterwards.** `VideoJsPlayer.tsx` must keep the `<video>` classes STATIC
   (`video-js vjs-custom-theme w-full h-full`). Conditional visibility classes (e.g. `!isVideo ? 'opacity-0
@@ -272,7 +277,8 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   `@/* → ./*`), but **existing code uses relative imports** (`./types/media`,
   `../types/media`). Match the surrounding file's style; don't introduce `@/` imports
   into files that use relative ones.
-- **Page layout is a fixed-height flex column** (`App.tsx:382` root `h-screen flex flex-col`):
+- **Page layout is a fixed-height flex column** (`App.tsx` root `h-dvh overflow-hidden flex flex-col`; `h-dvh` 而不是
+  `h-screen`——手机地址栏收放时 100vh 会溢出视口，dvh 跟随真实可视高度):
   header (fixed) + `<main flex-1 min-h-0>` (player section viewport-responsive height + library section `flex-1`)
   + footer (fixed). Every tab scrolls INTERNALLY inside its own box: the tracks list, the favorites rows and the
   artists/albums grids all use `overflow-y-auto flex-1 min-h-[140px]`. The `min-h-[140px]` floor is what keeps
