@@ -191,6 +191,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
   const playerRef = useRef<Player | null>(null);
   // 窄屏手势（视口左右滑动切歌）的起点
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  // 控制栏隐藏时的那次点按只负责唤回控制栏，吞掉随后触发的 click，避免顺带切播放/暂停
+  const suppressViewportTapRef = useRef(false);
   // The init useEffect (deps []) closes over the FIRST onNext; App recreates handleNextTrack
   // every render with fresh currentIndex/playMode, so the ended handler must call the LATEST one.
   const onNextRef = useRef(onNext);
@@ -847,10 +849,12 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  // Controls auto-hide timer: 音频与视频统一 — 播放中 3.5s 无鼠标操作后隐藏控制栏。
-  // 窄屏非全屏时不自动隐藏: 手机没有鼠标，胶囊一旦隐藏就只能靠点击(而点击会切播放/暂停)唤回，
-  // 进度条也就没法拖。
-  const autoHideControls = !isCompact || isFullscreen;
+  // Controls auto-hide timer: 音频与视频统一 — 播放中 3.5s 无操作后隐藏控制栏。
+  // 窄屏展开态也自动隐藏（默认折叠态没有控制胶囊，无需计时）。手机上靠 tap 唤回：
+  // 根容器的 onTouchStart 会把控制栏显示出来并续期，隐藏状态下的那次点按不会切播放/暂停，
+  // 所以进度条依然能拖。任一面板打开时暂停倒计时，避免操作过程中胶囊被收走。
+  const anyControlPanelOpen = showVolumePanel || showEqPanel || showLyricSettings || showSpeedMenu;
+  const autoHideControls = !compactCollapsed && !anyControlPanelOpen;
 
   const resetControlsTimer = useCallback(() => {
     setShowControls(true);
@@ -866,6 +870,24 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
   const handleMouseMove = () => {
     resetControlsTimer();
+  };
+
+  // 触屏（无 mousemove）：任何点按都续期控制栏；若点按时控制栏是隐藏的，
+  // 这次点按只负责"显示"，通过 suppressViewportTapRef 吞掉随后的 click。
+  const handleTouchStart = () => {
+    if (!autoHideControls) return;
+    if (!showControls) suppressViewportTapRef.current = true;
+    else suppressViewportTapRef.current = false;
+    resetControlsTimer();
+  };
+
+  // 视口点按：隐藏状态下的唤回点击不切播放/暂停，正常状态下才 toggle
+  const handleViewportClick = () => {
+    if (suppressViewportTapRef.current) {
+      suppressViewportTapRef.current = false;
+      return;
+    }
+    togglePlay();
   };
 
   // 鼠标离开播放区域 → 立即隐藏控制栏 (音频/视频统一; 暂停时保留控制栏方便操作)
@@ -1061,8 +1083,14 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     }
   };
 
-  const volumeFromPointer = (e: React.PointerEvent<HTMLElement>, track: HTMLElement) => {
+  const volumeFromPointer = (e: React.PointerEvent<HTMLElement>, track: HTMLElement, horizontal = false) => {
     const rect = track.getBoundingClientRect();
+    if (horizontal) {
+      // 横向推杆(折叠态单行音量条): 按指针 X 坐标算比例
+      if (rect.width <= 0) return;
+      setVolumeValue(Math.round(((e.clientX - rect.left) / rect.width) * 100) / 100);
+      return;
+    }
     if (rect.height <= 0) return;
     const ratio = (rect.bottom - e.clientY) / rect.height;
     setVolumeValue(Math.round(ratio * 100) / 100);
@@ -1232,6 +1260,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onTouchStart={handleTouchStart}
       // video.js 主题覆盖用 arbitrary variant 写(后代选择器), 不再手写 CSS 规则。
       // 注意: video.js 会在运行时注入 <style class="vjs-styles-defaults">(.video-js{width:300px;height:150px}),
       // 它不在任何 @layer 里, 优先级高于 Tailwind 的 utilities layer, 所以这些覆盖必须加 ! 后缀。
@@ -1239,7 +1268,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       // 因为舞台 overlay(absolute inset-0 z-[15])、控制胶囊、歌词列都是根容器的直接子元素,
       // 浏览器按指针下方最上层元素解析 cursor, 只给视口 div 加 cursor-none 时这些区域仍显示指针。
       // cursor 是继承属性, 根容器设 cursor-none 后 video.js 的 wrapper/<video> 也继承。
-      className={`relative w-full bg-app flex flex-col justify-between ${compactCollapsed && showVolumePanel ? 'overflow-visible' : 'overflow-hidden'} transition-all duration-300 [&_.vjs-custom-theme]:font-[inherit]! [&_.vjs-custom-theme]:bg-transparent! [&_.vjs-custom-theme]:w-full! [&_.vjs-custom-theme]:h-full! [&_.vjs-custom-theme_.vjs-tech]:object-contain! [&_.video-js:focus]:outline-none! ${
+      className={`relative w-full bg-app flex flex-col justify-between ${compactCollapsed && showVolumePanel ? 'overflow-visible' : 'overflow-hidden'} transition-[height] duration-300 [&_.vjs-custom-theme]:font-[inherit]! [&_.vjs-custom-theme]:bg-transparent! [&_.vjs-custom-theme]:w-full! [&_.vjs-custom-theme]:h-full! [&_.vjs-custom-theme_.vjs-tech]:object-contain! [&_.video-js:focus]:outline-none! ${
         isFullscreen ? 'h-screen w-screen' : compactCollapsed ? 'h-[92px] rounded-xl border border-line/80 shadow-lg' : isCompact ? 'h-[clamp(260px,calc(100vh-300px),420px)] rounded-2xl border border-line/80 shadow-xl' : isTheaterMode ? 'h-[clamp(300px,calc(100vh-300px),580px)] rounded-2xl border border-line shadow-2xl' : 'h-[clamp(240px,calc(100vh-420px),440px)] rounded-2xl border border-line/80 shadow-xl'
       } ${isFullscreen && isVideo && !showControls ? 'cursor-none' : ''}`}
     >
@@ -1398,7 +1427,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             {transcode.status === 'error' ? (
               <AlertTriangle className="w-3.5 h-3.5" />
             ) : (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 motion-safe:animate-spin" />
             )}
             <span>
               {transcode.status === 'error'
@@ -1436,7 +1465,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   }}
                   title={t(hint)}
                   aria-label={t(label)}
-                  className={`p-1.5 rounded-lg transition-all ${
+                  className={`p-1.5 rounded-lg transition-colors ${
                     visualizerMode === mode
                       ? 'bg-accent text-white shadow-sm'
                       : 'text-muted hover:text-ink-2 hover:bg-surface-2/60'
@@ -1459,7 +1488,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         className={`relative flex-1 w-full h-full flex items-center justify-center ${isVideo ? 'bg-viewport' : 'bg-stage'} overflow-hidden ${
           isFullscreen && isVideo && !showControls ? 'cursor-none' : 'cursor-pointer'
         } ${compactCollapsed ? 'opacity-0 pointer-events-none' : ''}`}
-        onClick={togglePlay}
+        onClick={handleViewportClick}
         // 窄屏手势: 视口上左右滑动切歌（滑动不会触发 click，所以不会误切播放状态）。
         // 只记录 touchStart 起点，touchMove 不更新，否则 delta 会被最后一段位移稀释。
         onTouchStart={(e) => { swipeStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
@@ -1563,7 +1592,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           {/* 音频曲目信息: 桌面在左列(右对齐), 窄屏在唱片右侧(左对齐) */}
           {!isVideo && (
             <div className={`min-w-0 min-h-0 flex flex-col justify-center gap-1.5 ${isCompact ? 'text-left col-start-2' : 'text-right pr-3'}`}>
-              <span className="text-[10px] uppercase tracking-[0.22em] text-muted-2">{t('正在播放')}</span>
+              <span className="text-[11px] font-medium text-muted-2">{t('正在播放')}</span>
               <h2 className="text-lg sm:text-xl font-bold leading-tight text-ink break-words drop-shadow-md">
                 {currentTrack.title}
               </h2>
@@ -1605,8 +1634,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 />
                 {/* 没有封面时的中心标签占位（与列表行的 coverGradient 风格一致） */}
                 <div className="relative w-[66%] h-[66%] rounded-full overflow-hidden shadow-inner border-2 border-line-strong bg-surface flex items-center justify-center">
-                  <div className="absolute inset-0 bg-gradient-to-tr from-accent-dim via-surface to-app flex items-center justify-center text-accent font-bold text-xl">
-                    🎵
+                  <div className="absolute inset-0 bg-gradient-to-tr from-accent-dim via-surface to-app flex items-center justify-center text-accent">
+                    <Music className="w-6 h-6" />
                   </div>
                 </div>
                 {/* 封面铺满整张唱片: 淡入覆盖黑胶底与标签 */}
@@ -1653,7 +1682,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               )}
               {lyricStatus === 'loading' && (
                 <div className={`flex items-center gap-2 text-xs ${isVideo ? 'text-lyric-ink/70' : 'text-muted'}`}>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 motion-safe:animate-spin" />
                   <span>{t('正在从网易云获取歌词…')}</span>
                 </div>
               )}
@@ -1714,7 +1743,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             <div className="col-span-2 min-w-0 min-h-0 flex flex-col justify-center gap-1.5">
               {lyricStatus === 'loading' && (
                 <div className="flex items-center gap-2 text-xs text-muted">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 motion-safe:animate-spin" />
                   <span>{t('正在从网易云获取歌词…')}</span>
                 </div>
               )}
@@ -1798,10 +1827,71 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
         </div>
       )}
 
-      {/* 音量面板 — 桌面和窄屏都弹同一套大推杆面板: 内联小推杆不够直观, 手机铺满播放区,
-          桌面浮在控制胶囊上方，避免遮住画面; 折叠态时挂在胶囊下方，不展开播放器也能调音量 */}
-      {showVolumePanel && (
-        <div className={`absolute z-40 rounded-xl bg-app/90 border border-line p-3 flex flex-col gap-2 shadow-2xl backdrop-blur-sm ${isCompact ? (compactCollapsed ? 'left-2 right-2 top-[96px] h-[132px]' : 'inset-2') : 'left-1/2 -translate-x-1/2 bottom-[104px] w-[360px] max-h-[calc(100%-112px)]'}`}>
+      {/* 音量面板 — 展开态/桌面弹大推杆面板: 内联小推杆不够直观, 手机铺满播放区,
+          桌面浮在控制胶囊上方，避免遮住画面。
+          折叠态不展开播放器也要能调音量, 但 132px 高的双层板式太挤, 压成一行:
+          静音 + 横向推杆 + 百分比 + ×2(折叠态唯一的 ×2 入口) + 关闭, 挂在胶囊下方 */}
+      {showVolumePanel && (isCompact && compactCollapsed ? (
+        <div
+          className="absolute z-40 left-2 right-2 top-[96px] rounded-xl bg-app/90 border border-line p-1.5 flex items-center gap-1.5 shadow-2xl backdrop-blur-sm"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleMute(); }}
+            title={isMuted ? t('取消静音 (M)') : t('静音 (M)')}
+            className="w-9 h-9 shrink-0 rounded-md bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink flex items-center justify-center"
+          >
+            {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </button>
+          <div
+            role="slider"
+            aria-label={t('音量调节')}
+            aria-orientation="horizontal"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
+            tabIndex={0}
+            className="relative flex-1 h-8 rounded-full bg-surface-2 cursor-pointer select-none [touch-action:none]"
+            onKeyDown={handleFaderKeyDown}
+            onPointerDown={(e) => { volDraggingRef.current = true; volumeFromPointer(e, e.currentTarget, true); }}
+            onPointerMove={(e) => { if (volDraggingRef.current) volumeFromPointer(e, e.currentTarget, true); }}
+            onPointerUp={() => { volDraggingRef.current = false; }}
+            onPointerLeave={() => { volDraggingRef.current = false; }}
+          >
+            {[25, 50, 75].map((v) => (
+              <div key={v} className="absolute top-0 bottom-0 w-px bg-line-soft pointer-events-none" style={{ left: `${v}%` }} />
+            ))}
+            <div
+              className="absolute top-0 bottom-0 left-0 rounded-full bg-gradient-to-r from-accent-dim to-accent transition-[width] duration-150"
+              style={{ width: `${Math.round((isMuted ? 0 : volume) * 100)}%` }}
+            />
+            <div
+              className="absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-surface border-2 border-accent shadow-md pointer-events-none transition-[left] duration-150"
+              style={{ left: `calc(${isMuted ? 0 : volume} * (100% - 20px))` }}
+            />
+          </div>
+          <span className="shrink-0 font-mono tabular-nums text-sm text-ink leading-none w-9 text-right">
+            {Math.round((isMuted ? 0 : volume) * 100)}%
+          </span>
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleVolumeBoost(); }}
+            title={volumeBoost ? t('音量增强 ×2 (已开启, 点击关闭)') : t('音量增强 ×2 (音乐增强)')}
+            className={`w-9 h-9 shrink-0 rounded-md text-2xs font-bold flex items-center justify-center transition-colors ${
+              volumeBoost ? 'bg-accent text-white' : 'bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink'
+            }`}
+          >
+            ×2
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowVolumePanel(false); }}
+            title={t('关闭')}
+            className="w-9 h-9 shrink-0 rounded-md bg-surface-2 hover:bg-elevated text-ink-3 hover:text-ink flex items-center justify-center"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <div className={`absolute z-40 rounded-xl bg-app/90 border border-line p-3 flex flex-col gap-2 shadow-2xl backdrop-blur-sm ${isCompact ? 'inset-2' : 'left-1/2 -translate-x-1/2 bottom-[104px] w-[360px] max-h-[calc(100%-112px)]'}`}>
           <div className="flex items-center justify-between">
             <span className="text-xs text-ink-2 flex items-center gap-1">
               <Volume2 className="w-3.5 h-3.5" />
@@ -1853,7 +1943,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
               tabIndex={0}
               style={{ height: isCompact ? '100%' : '120px' }}
-              className="relative w-8 shrink-0 rounded-full bg-surface-2 cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+              className="relative w-8 shrink-0 rounded-full bg-surface-2 cursor-pointer select-none"
               onKeyDown={handleFaderKeyDown}
               onPointerDown={(e) => {
                 volDraggingRef.current = true;
@@ -1873,11 +1963,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 <div key={v} className="absolute left-0 right-0 h-px bg-line-soft pointer-events-none" style={{ bottom: `${v}%` }} />
               ))}
               <div
-                className="absolute left-0 right-0 bottom-0 rounded-full bg-gradient-to-t from-accent-dim to-accent transition-all duration-150"
+                className="absolute left-0 right-0 bottom-0 rounded-full bg-gradient-to-t from-accent-dim to-accent transition-[height] duration-150"
                 style={{ height: `${Math.round((isMuted ? 0 : volume) * 100)}%` }}
               />
               <div
-                className="absolute left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-surface border-2 border-accent shadow-md pointer-events-none transition-all duration-150"
+                className="absolute left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-surface border-2 border-accent shadow-md pointer-events-none transition-[bottom] duration-150"
                 style={{ bottom: `calc(${isMuted ? 0 : volume} * (100% - 24px))` }}
               />
             </div>
@@ -1931,13 +2021,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   +5%
                 </button>
               </div>
-              {!compactCollapsed && (
-                <p className="text-[10px] text-muted-2">{t('拖动推杆或点预设，↑/↓ 微调，Esc 关闭')}</p>
-              )}
+              <p className="text-[10px] text-muted-2">{t('拖动推杆或点预设，↑/↓ 微调，Esc 关闭')}</p>
             </div>
           </div>
         </div>
-      )}
+      ))}
 
       {/* 均衡器 (Equalizer) 面板 — 10段 Web Audio 均衡器，预设 + 手动调节 */}
       {/* 均衡器面板贴在控制胶囊上方(胶囊高约 84px + bottom-3), 避免重叠 */}
@@ -2047,10 +2135,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           onPointerLeave={handleProgressPointerLeave}
         >
           {/* Track background */}
-          <div className={`relative w-full rounded-full bg-surface-2 transition-all overflow-hidden ${isCompact ? 'h-2.5 group-hover:h-3' : 'h-1.5 group-hover:h-2.5'}`}>
+          <div className={`relative w-full rounded-full bg-surface-2 transition-[height] overflow-hidden ${isCompact ? 'h-2.5 group-hover:h-3' : 'h-1.5 group-hover:h-2.5'}`}>
             {/* Buffered bar */}
             <div
-              className="absolute left-0 top-0 bottom-0 bg-elevated/60 transition-all duration-200"
+              className="absolute left-0 top-0 bottom-0 bg-elevated/60 transition-[width] duration-200"
               style={{ width: `${Math.min(100, bufferPercent)}%` }}
             />
             {/* Played bar */}

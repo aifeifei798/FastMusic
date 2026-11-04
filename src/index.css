@@ -8,6 +8,16 @@
 @import "tailwindcss";
 @import "video.js/dist/video-js.css";
 
+/* ============ 键盘焦点兜底环 ============
+   所有可交互元素的 :focus-visible 统一走这条全局规则(outline 现代浏览器跟随圆角)。
+   组件里不再逐个写 focus-visible:ring-*。规则不进 @layer, unlayered 优先级高于
+   utilities, 所以个别元素上的 outline-none 不会压掉键盘焦点的环;
+   鼠标/触摸点按不触发 :focus-visible, 不受影响。 */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 /* ============ 主题令牌(深色 = 默认) ============
    深色主题刻意带一点暖调(rose/amber), 与品牌徽标的渐变呼应;
    浅色主题是 Apple 风: 近黑文字 + 白卡片 + hairline 边框 + 克制的 accent。 */
