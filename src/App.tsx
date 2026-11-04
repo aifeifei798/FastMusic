@@ -115,6 +115,22 @@ export default function App() {
   const [playMode, setPlayMode] = useState<PlayMode>('loop-all');
   // 是否已经选过曲目（避免切筛选时把播放区重置成列表第一条）
   const hasSelectionRef = useRef<boolean>(false);
+  // 随机播放的"最近播过"历史（电台与列表 shuffle 共用）。裸的 Math.random 是有放回抽样，
+  // 50 首的池子连播 20 首重复概率 ~98%（用户实测同一首能连出 3 次）；
+  // 抽下一首时排除最近播过的，窗口外的最旧条目自然滚出。
+  const shuffleHistoryRef = useRef<string[]>([]);
+  const SHUFFLE_HISTORY_MAX = 20;
+  const recordShuffleHistory = (id: string) => {
+    shuffleHistoryRef.current = [id, ...shuffleHistoryRef.current.filter((x) => x !== id)].slice(0, SHUFFLE_HISTORY_MAX);
+  };
+  // 从 pool 随机抽一个下标: 排除最近播过的与当前曲目; 小列表全部被历史覆盖时退化为只排除当前
+  const pickRandomIndex = (pool: MediaItem[], currentIdx: number): number => {
+    const recent = new Set(shuffleHistoryRef.current);
+    let candidates = pool.map((_, i) => i).filter((i) => i !== currentIdx && !recent.has(pool[i].id));
+    if (candidates.length === 0) candidates = pool.map((_, i) => i).filter((i) => i !== currentIdx);
+    if (candidates.length === 0) return currentIdx; // 整个池只剩一首(单曲池), 原地不动
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  };
   // 上一首/下一首的最新实现（handlePrevTrack/handleNextTrack 每次 render 都重建，
   // 全局 keydown 闭包必须通过 ref 读取最新版本）
   const prevNextRef = useRef<{ prev: () => void; next: () => void }>({ prev: () => {}, next: () => {} });
@@ -402,10 +418,11 @@ export default function App() {
 
     const pick = (pool: MediaItem[]) => {
       if (pool.length === 0) return;
-      const idx = Math.floor(Math.random() * pool.length);
+      const idx = pickRandomIndex(pool, -1);
       setRadioQueue(pool);
       setCurrentIndex(idx);
       setCurrentTrack(pool[idx]);
+      recordShuffleHistory(pool[idx].id);
       hasSelectionRef.current = true;
     };
 
@@ -430,14 +447,17 @@ export default function App() {
     setRadioChannel(newChannel);
     const randFreq = `FM ${(88 + Math.random() * 20).toFixed(1)} MHz`;
     setRadioFrequency(randFreq);
+    // 切台 = 全新收听: 清掉旧频道的播放历史, 否则新池子会被旧历史大面积排除
+    shuffleHistoryRef.current = [];
 
     try {
       const radioTracks = await mediaApi.getRadioTracks(newChannel, 50);
       if (radioTracks.length > 0) {
-        const idx = Math.floor(Math.random() * radioTracks.length);
+        const idx = pickRandomIndex(radioTracks, -1);
         setRadioQueue(radioTracks);
         setCurrentIndex(idx);
         setCurrentTrack(radioTracks[idx]);
+        recordShuffleHistory(radioTracks[idx].id);
       }
     } catch (err) {
       console.warn('Channel switch error', err);
@@ -450,18 +470,22 @@ export default function App() {
       await startRadioMode(radioChannel);
       return;
     }
-    // 当电台随机池即将播完时，在后台静默补充更多随机曲目，保持无限播放
+    // 当电台随机池即将播完时，在后台静默补充更多随机曲目，保持无限播放。
+    // 服务端每批都是全库重新抽, 会和池里已有的歌撞车; 按 id 去重, 避免池子越长重复越多。
     if (currentIndex >= radioQueue.length - 2) {
       mediaApi.getRadioTracks(radioChannel, 30).then((fresh) => {
-        setRadioQueue((prev) => [...prev, ...fresh]);
+        setRadioQueue((prev) => {
+          const seen = new Set(prev.map((t) => t.id));
+          const dedup = fresh.filter((t) => !seen.has(t.id));
+          return dedup.length > 0 ? [...prev, ...dedup] : prev;
+        });
       }).catch(() => {});
     }
-    let nextIdx = Math.floor(Math.random() * radioQueue.length);
-    if (radioQueue.length > 1 && nextIdx === currentIndex) {
-      nextIdx = (currentIndex + 1) % radioQueue.length;
-    }
+    // 排除最近播过的(含当前)再抽, 同一首歌短期内不会再被抽到
+    const nextIdx = pickRandomIndex(radioQueue, currentIndex);
     setCurrentIndex(nextIdx);
     setCurrentTrack(radioQueue[nextIdx]);
+    recordShuffleHistory(radioQueue[nextIdx].id);
   }, [radioQueue, currentIndex, radioChannel, startRadioMode]);
 
   // 退出电台模式
@@ -560,9 +584,10 @@ export default function App() {
       return;
     }
     if (playMode === 'shuffle') {
-      const idx = Math.floor(Math.random() * playlist.length);
+      const idx = pickRandomIndex(playlist, currentIndex);
       setCurrentIndex(idx);
       setCurrentTrack(playlist[idx]);
+      recordShuffleHistory(playlist[idx].id);
       return;
     }
     // 当前曲目不在列表里时，"上一首"取列表最后一条
@@ -582,9 +607,10 @@ export default function App() {
       return;
     }
     if (playMode === 'shuffle') {
-      const idx = Math.floor(Math.random() * playlist.length);
+      const idx = pickRandomIndex(playlist, currentIndex);
       setCurrentIndex(idx);
       setCurrentTrack(playlist[idx]);
+      recordShuffleHistory(playlist[idx].id);
       return;
     }
 

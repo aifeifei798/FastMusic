@@ -252,6 +252,11 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   所以"下一首"永远是列表里的下一条（MTV 筛选 → 下一个 MV；音乐筛选 → 下一首歌；收藏标签 → 下一个收藏）。
   `handleNextTrack` 播到列表末尾且 `hasMore` 时先 `handleLoadMore()` 再播新加载的第一条，不会回到开头。
   `PlayQueueModal.tsx` 已删除，列表行的 "+" 按钮和头部的"播放队列"按钮都没有了。
+- **随机播放 = 有历史排除的抽样（电台 + 列表 shuffle 共用）**: 裸 `Math.random` 是有放回抽样，
+  50 首的电台池连播 20 首重复概率 ~98%（同一首能被抽出 3 次）。`App.tsx` 的 `pickRandomIndex()` +
+  `shuffleHistoryRef`（窗口 20）在抽下一首时排除最近播过的 id（含当前），窗口外的最旧条目自然滚出；
+  小列表全部被历史覆盖时退化为只排除当前。电台追加新批次（`getRadioTracks` 每批全库重抽）按 id 去重后才
+  push 进池，池子不会越滚越重复；切台时清空历史。实测连切 40 首、窗口 20 内零重复。
   `loop-one`（单曲循环）由 `VideoJsPlayer` 的 `ended` 处理器（读 `playModeRef`）`currentTime(0)+play()` 重播，
   App 的 `handleNextTrack` 在 `loop-one` 时直接 return。
 - **频谱模式有"无"**: `VideoJsPlayer.tsx` 的视觉模式切换（柱状频谱 / 波形图 / 光晕环 / 对称频谱 / **无**）
