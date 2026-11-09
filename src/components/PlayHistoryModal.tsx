@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, History, Trash2, Play, Film, Music, Search } from 'lucide-react';
 import { MediaItem, PlayHistoryItem } from '../types/media';
 import { SCROLLBAR_CLASSES } from '../utils/ui';
 import { t } from '../utils/i18n';
+import { mediaApi } from '../services/api';
 
 interface PlayHistoryModalProps {
   isOpen: boolean;
@@ -22,6 +23,31 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
   onClearHistory,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  // 历史里的 track 是录制时的快照，cover_url 可能为空/陈旧：弹窗打开时按服务端封面索引补全
+  const [coverById, setCoverById] = useState<Record<string, string>>({});
+  const coverRequestedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const ids = history
+      .map((item) => item.track.id)
+      .filter((id) => !coverRequestedRef.current.has(id))
+      .slice(0, 200);
+    if (ids.length === 0) return;
+    ids.forEach((id) => coverRequestedRef.current.add(id));
+    let cancelled = false;
+    mediaApi.prefetchCovers(ids).then((covers) => {
+      if (cancelled || !covers) return;
+      const clean: Record<string, string> = {};
+      for (const [id, url] of Object.entries(covers)) {
+        if (url) clean[id] = url;
+      }
+      if (Object.keys(clean).length > 0) {
+        setCoverById((prev) => ({ ...prev, ...clean }));
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen, history]);
 
   if (!isOpen) return null;
 
@@ -122,6 +148,7 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
           ) : (
             filteredHistory.map((item, idx) => {
               const isVideo = item.track.media_type === 'video';
+              const coverUrl = item.track.cover_url || coverById[item.track.id];
               return (
                 <div
                   key={`${item.track.id}-${item.playedAt}-${idx}`}
@@ -131,9 +158,9 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     {/* Cover or Icon */}
                     <div className="w-10 h-10 rounded-lg bg-surface-2 border border-line-strong/80 flex items-center justify-center shrink-0 overflow-hidden relative">
-                      {item.track.cover_url ? (
+                      {item.track.cover_url || coverById[item.track.id] ? (
                         <img
-                          src={item.track.cover_url}
+                          src={item.track.cover_url || coverById[item.track.id]}
                           alt={item.track.title}
                           referrerPolicy="no-referrer"
                           className="w-full h-full object-cover"

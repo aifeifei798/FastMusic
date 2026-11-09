@@ -97,6 +97,7 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [scanResult, setScanResult] = useState<ScanResponse | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [dirError, setDirError] = useState<string | null>(null);
 
   // 全库缓存任务状态
   const [jobs, setJobs] = useState<CacheJob[]>([]);
@@ -190,20 +191,30 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
     }
   };
 
-  const handleAddDirectory = () => {
+  const handleAddDirectory = async () => {
     const trimmed = newDirPath.trim();
     if (!trimmed) return;
     if (directories.includes(trimmed)) return;
     const updated = [...directories, trimmed];
-    setDirectories(updated);
-    setNewDirPath('');
-    mediaApi.updateDirectories(updated);
+    try {
+      await mediaApi.updateDirectories(updated);
+      setDirectories(updated);
+      setNewDirPath('');
+      setDirError(null);
+    } catch (err) {
+      setDirError(String(err instanceof Error ? err.message : err));
+    }
   };
 
-  const handleRemoveDirectory = (dirToRemove: string) => {
+  const handleRemoveDirectory = async (dirToRemove: string) => {
     const updated = directories.filter(d => d !== dirToRemove);
-    setDirectories(updated);
-    mediaApi.updateDirectories(updated);
+    try {
+      await mediaApi.updateDirectories(updated);
+      setDirectories(updated);
+      setDirError(null);
+    } catch (err) {
+      setDirError(String(err instanceof Error ? err.message : err));
+    }
   };
 
   const handleToggleResume = () => {
@@ -610,6 +621,14 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                 <span>{t('添加路径')}</span>
               </button>
             </div>
+
+            {/* 目录保存失败提示：服务端没接受时本地不改动，避免 UI 与服务端漂移 */}
+            {dirError && (
+              <div className="mt-2 p-2.5 rounded-lg bg-accent-dim/40 border border-accent-dim text-accent-soft flex items-center gap-2 text-xs">
+                <AlertCircle className="w-4 h-4 shrink-0 text-accent" />
+                <span>{t('目录保存失败：')}{dirError}</span>
+              </div>
+            )}
 
             {/* Trigger Scan Button */}
             <div className="pt-3">

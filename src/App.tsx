@@ -115,6 +115,8 @@ export default function App() {
   const [playMode, setPlayMode] = useState<PlayMode>('loop-all');
   // 是否已经选过曲目（避免切筛选时把播放区重置成列表第一条）
   const hasSelectionRef = useRef<boolean>(false);
+  // 首次加载自动选中第一条只是「预选」，并未播放；这条 id 记一次跳过，避免历史里出现没播过的条目
+  const autoSelectedIdRef = useRef<string | null>(null);
   // 随机播放的"最近播过"历史（电台与列表 shuffle 共用）。裸的 Math.random 是有放回抽样，
   // 50 首的池子连播 20 首重复概率 ~98%（用户实测同一首能连出 3 次）；
   // 抽下一首时排除最近播过的，窗口外的最旧条目自然滚出。
@@ -213,6 +215,7 @@ export default function App() {
         setCurrentTrack(trackData.items[0]);
         setCurrentIndex(0);
         hasSelectionRef.current = true;
+        autoSelectedIdRef.current = trackData.items[0].id;
       }
     } catch (err) {
       console.error('Failed to load library data:', err);
@@ -347,6 +350,11 @@ export default function App() {
   // Record current track to history whenever it starts playing, saving up to 100 entries in localStorage
   useEffect(() => {
     if (!currentTrack) return;
+    // 首次加载的自动选中没有播放过：跳过这一次记录（之后真正播放/换曲仍会记）
+    if (autoSelectedIdRef.current === currentTrack.id) {
+      autoSelectedIdRef.current = null;
+      return;
+    }
     setHistory((prev) => {
       const filtered = prev.filter((item) => item.track.id !== currentTrack.id);
       const updated = [{ track: currentTrack, playedAt: Date.now() }, ...filtered].slice(0, 100);
@@ -444,21 +452,24 @@ export default function App() {
 
   // 切台 / 切换电台频道 (全部 / 纯音 / MTV)
   const handleSwitchRadioChannel = async (newChannel: RadioChannel) => {
-    setRadioChannel(newChannel);
-    const randFreq = `FM ${(88 + Math.random() * 20).toFixed(1)} MHz`;
-    setRadioFrequency(randFreq);
-    // 切台 = 全新收听: 清掉旧频道的播放历史, 否则新池子会被旧历史大面积排除
-    shuffleHistoryRef.current = [];
-
     try {
       const radioTracks = await mediaApi.getRadioTracks(newChannel, 50);
-      if (radioTracks.length > 0) {
-        const idx = pickRandomIndex(radioTracks, -1);
-        setRadioQueue(radioTracks);
-        setCurrentIndex(idx);
-        setCurrentTrack(radioTracks[idx]);
-        recordShuffleHistory(radioTracks[idx].id);
+      if (radioTracks.length === 0) {
+        // 该频道没有可播曲目：不切台（保留当前频道与队列），避免横幅显示新台但还在播旧池子
+        console.warn(`[Radio] 频道 ${newChannel} 没有可用曲目，保持当前频道`);
+        return;
       }
+      setRadioChannel(newChannel);
+      const randFreq = `FM ${(88 + Math.random() * 20).toFixed(1)} MHz`;
+      setRadioFrequency(randFreq);
+      // 切台 = 全新收听: 清掉旧频道的播放历史, 否则新池子会被旧历史大面积排除
+      shuffleHistoryRef.current = [];
+
+      const idx = pickRandomIndex(radioTracks, -1);
+      setRadioQueue(radioTracks);
+      setCurrentIndex(idx);
+      setCurrentTrack(radioTracks[idx]);
+      recordShuffleHistory(radioTracks[idx].id);
     } catch (err) {
       console.warn('Channel switch error', err);
     }
@@ -494,8 +505,9 @@ export default function App() {
     setPlayMode('loop-all');
   };
 
-  // 全局键盘监听: R 电台 / S 收藏 / J K 上一首下一首 / Space 播放暂停 / ← → 快退快进 /
-  // ↑ ↓ 音量 / M 静音 / F 全屏 / V 频谱模式 / ? 快捷键面板
+  // 全局键盘监听（唯一快捷键来源）: R 电台 / S 收藏 / J K 上一首下一首 / Space 播放暂停 /
+  // ← → 快退快进 / ↑ ↓ 音量 / M 静音 / F 全屏 / V 频谱模式 / L 歌词 / ? 快捷键面板
+  // VideoJsPlayer 不再自带 handler（之前同键双触发：Space/M/L 抵消、←→/↑↓ 幅度翻倍）
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
@@ -510,9 +522,10 @@ export default function App() {
           toggleMute: () => void;
           toggleFullscreen: () => void;
           cycleVisualizer: () => void;
+          toggleLyrics: () => void;
         };
       })._fastMusicPlayerControls;
-      // video.js 自带 Space / ← → 快捷键（播放器有焦点时），跳过避免双重触发
+      // video.js 自带 Space / ← → / M / F / J / K 快捷键（播放器有焦点时），跳过避免双重触发
       const target = e.target as HTMLElement | null;
       const inPlayer = !!target && typeof target.closest === 'function' && !!target.closest('.video-js');
 
@@ -536,17 +549,22 @@ export default function App() {
         e.preventDefault();
         controls?.adjustVolume(-0.05);
       }
-      if (e.code === 'KeyM' && bare) {
+      if (e.code === 'KeyM' && bare && !inPlayer) {
         e.preventDefault();
         controls?.toggleMute();
       }
-      if (e.code === 'KeyF' && bare) {
+      if (e.code === 'KeyF' && bare && !inPlayer) {
         e.preventDefault();
         controls?.toggleFullscreen();
       }
       if (e.code === 'KeyV' && bare) {
         e.preventDefault();
         controls?.cycleVisualizer();
+      }
+      // L 歌词开关：video.js 不绑定 L（没有 text track），任何焦点下都安全
+      if (e.code === 'KeyL' && bare) {
+        e.preventDefault();
+        controls?.toggleLyrics?.();
       }
       if (e.code === 'KeyR' && bare) {
         e.preventDefault();
@@ -560,11 +578,11 @@ export default function App() {
         e.preventDefault();
         handleToggleFavorite(currentTrack);
       }
-      if (e.code === 'KeyJ' && bare) {
+      if (e.code === 'KeyJ' && bare && !inPlayer) {
         e.preventDefault();
         prevNextRef.current.prev();
       }
-      if (e.code === 'KeyK' && bare) {
+      if (e.code === 'KeyK' && bare && !inPlayer) {
         e.preventDefault();
         prevNextRef.current.next();
       }

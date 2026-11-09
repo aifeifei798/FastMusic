@@ -245,10 +245,18 @@ function transcodeInfo(item: ServerMediaItem): TranscodeInfo | undefined {
   if (cached && cached.srcMtime === srcMtime) {
     return { status: 'ready', progress: 100, container: cached.container, out_size: cached.size };
   }
-  const outPath = (job && job.outPath) || findFreshSidecar(item.abs_path, srcMtime);
+  let outPath = (job && job.outPath) || findFreshSidecar(item.abs_path, srcMtime);
   if (outPath) {
     let outSize = 0;
-    try { outSize = fs.statSync(outPath).size; } catch {}
+    try {
+      outSize = fs.statSync(outPath).size;
+    } catch {
+      // done job 的 sidecar 事后被删：不缓存 ready(out_size=0)，改找另一条新鲜 sidecar，没有就 pending
+      const alt = findFreshSidecar(item.abs_path, srcMtime);
+      if (!alt || alt === outPath) return { status: 'pending', progress: 0 };
+      outPath = alt;
+      try { outSize = fs.statSync(outPath).size; } catch { return { status: 'pending', progress: 0 }; }
+    }
     sidecarStatCache.set(item.abs_path, {
       outPath,
       size: outSize,
@@ -298,6 +306,8 @@ function decorateItem(item: ServerMediaItem): ServerMediaItem {
 const WEBM_NATIVE_CODECS = new Set(['av1', 'vp9']);
 // 本机 Chrome 实测能解 H.264 MP4（黑屏结论已推翻），所以 h264 源也只需无损 remux 到 MP4。
 const MP4_NATIVE_CODECS = new Set(['h264', 'hevc']);
+// webm 容器原生支持的音频编码：纯音频 .mkv remux 时可直接 -c:a copy，其余重编码成 Opus
+const WEBM_AUDIO_CODECS = new Set(['opus', 'vorbis']);
 
 // 异步探测源的视频/音频编码（不阻塞事件循环）。失败返回 undefined → 走转码兜底。
 function probeCodecsAsync(srcPath: string): Promise<{ video?: string; audio?: string } | undefined> {
@@ -341,6 +351,15 @@ function buildFfmpegArgs(
   const base = ['-y', '-hide_banner', '-nostdin', '-i', srcPath];
 
   if (remux) {
+    // 纯音频 .mkv（无视频流）：只映射音频 → webm；Opus/Vorbis 直接 copy，其余转 Opus。
+    // 之前按视频流分支 remux/重编码，纯音频文件因 `-map 0:v:0` 无流可映射而 ffmpeg exit 1。
+    if (!codecs?.video && codecs?.audio) {
+      const args = [...base, '-vn', '-map', '0:a:0'];
+      if (WEBM_AUDIO_CODECS.has(codecs.audio)) args.push('-c:a', 'copy');
+      else args.push('-c:a', 'libopus', '-b:a', '128k');
+      args.push('-f', 'webm', '-progress', 'pipe:2', '-nostats', tmpPath);
+      return args;
+    }
     // 无损 remux：视频/音频流原封不动，只是换容器 → 秒级完成
     const args = [...base, '-map', '0:v:0'];
     if (codecs && codecs.audio) args.push('-map', '0:a:0');
@@ -387,14 +406,18 @@ function startTranscode(job: TranscodeJob): void {
 
   void probeCodecsAsync(job.srcPath).then((codecs) => {
     const video = codecs?.video;
-    // AV1/VP9 → WebM 无损 remux；H.264 → MP4 无损 remux；探测失败/其他 → VP9+Opus WebM 重编码
+    const audio = codecs?.audio;
+    const audioOnly = !video && Boolean(audio);
+    // AV1/VP9 → WebM 无损 remux；H.264/HEVC → MP4 无损 remux；
+    // 纯音频 .mkv → WebM 仅音频 remux（buildFfmpegArgs 的 remux 分支处理）；探测失败/其他 → VP9+Opus 重编码
     const container: 'webm' | 'mp4' | 'vp9' =
-      video && WEBM_NATIVE_CODECS.has(video) ? 'webm'
+      audioOnly ? 'webm'
+      : video && WEBM_NATIVE_CODECS.has(video) ? 'webm'
       : video && MP4_NATIVE_CODECS.has(video) ? 'mp4'
       : 'vp9';
     job.outPath = job.srcPath + (container === 'mp4' ? '.mp4' : '.webm');
     job.tmpPath = `${job.srcPath}.fastmusic.tmp`;
-    console.log(`[Transcode] start ${path.basename(job.srcPath)} [${container === 'vp9' ? '转码' : 'remux'}→${container === 'vp9' ? 'webm' : container} ${video || '?'}]`);
+    console.log(`[Transcode] start ${path.basename(job.srcPath)} [${container === 'vp9' ? '转码' : 'remux'}→${container === 'vp9' ? 'webm' : container} ${video || audio || '?'}]`);
 
     const args = buildFfmpegArgs(
       job.srcPath,
@@ -677,18 +700,22 @@ function findMediaFilesFast(rootDir: string): Promise<string[]> {
       return;
     }
     let buf = '';
-    let failed = false;
+    let spawnError = false;
+    let stderrText = '';
     const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, 180000);
     p.stdout?.on('data', (d: Buffer) => { buf += d.toString(); });
-    p.stderr?.on('data', () => { failed = true; });
-    p.on('error', () => { failed = true; });
+    // stderr 只是权限警告之类的信息，不代表失败：之前任何 stderr 都触发回退
+    p.stderr?.on('data', (d: Buffer) => { stderrText = (stderrText + d.toString()).slice(-400); });
+    p.on('error', () => { spawnError = true; });
     p.on('close', (code) => {
       clearTimeout(timer);
-      if (failed || code !== 0 || buf.length === 0) {
-        console.warn(`[Scan] fdfind 不可用，退回 JS 递归枚举 (${code})`);
+      if (spawnError || code !== 0) {
+        const first = stderrText.trim().split('\n')[0];
+        console.warn(`[Scan] fdfind 失败 (${code})，退回 JS 递归枚举${first ? `：${first}` : ''}`);
         resolve(findMediaFilesRecursively(rootDir));
         return;
       }
+      // code===0 且输出为空 = 目录确实没有媒体文件，直接返回空，不再回退重扫
       const files = buf.split('\0').filter((f) => f && !isSidecarFile(path.basename(f)));
       resolve(files);
     });
@@ -936,58 +963,8 @@ async function scanMultipleLibraries(rootDirs: string[], force: boolean = false)
   };
 }
 
-// 演示/种子库已删除：不再预加载任何示例媒体
-// Recursively scan library folder: root_dir / {Artist} / {Album} / {Title}.{ext}
-function scanLibrary(rootDir: string) {
-  if (!fs.existsSync(rootDir)) {
-    console.warn(`[Warn] 扫描目录不存在: ${rootDir}`);
-    return;
-  }
-
-  const artists = fs.readdirSync(rootDir, { withFileTypes: true });
-  for (const artistDirent of artists) {
-    if (!artistDirent.isDirectory()) continue;
-    const artistName = artistDirent.name;
-    const artistPath = path.join(rootDir, artistName);
-
-    const albums = fs.readdirSync(artistPath, { withFileTypes: true });
-    for (const albumDirent of albums) {
-      if (!albumDirent.isDirectory()) continue;
-      const albumName = albumDirent.name;
-      const albumPath = path.join(artistPath, albumName);
-
-      const files = fs.readdirSync(albumPath, { withFileTypes: true });
-      for (const fileDirent of files) {
-        if (!fileDirent.isFile()) continue;
-        const ext = path.extname(fileDirent.name).toLowerCase();
-        // MKV 转码产出的侧车文件 (foo.mkv.webm) 不是独立曲目，必须跳过；
-        // 否则一次转码就会往库里塞一条重复的音频条目。
-        if (isSidecarFile(fileDirent.name)) continue;
-        if (!ALL_MEDIA_EXTS.has(ext)) continue;
-
-        const filePath = path.join(albumPath, fileDirent.name);
-        const stats = fs.statSync(filePath);
-        const title = path.basename(fileDirent.name, ext);
-        const relPath = path.relative(rootDir, filePath);
-        const id = generateId(relPath);
-        const mediaType = AUDIO_EXTS.has(ext) ? 'audio' : 'video';
-
-        MEDIA_DB.set(id, {
-          id,
-          title,
-          artist: artistName,
-          album: albumName,
-          media_type: mediaType,
-          ext,
-          file_size: stats.size,
-          stream_url: `/api/stream/${id}`,
-          abs_path: filePath
-        });
-        invalidateQueryCaches();
-      }
-    }
-  }
-}
+// 旧式三层目录扫描 scanLibrary（按 Artist/Album 目录结构、不解析元数据）已删除：
+// 它是死代码（无任何调用方），真实扫描走 scanMultipleLibraries（增量 + music-metadata/ffprobe）。
 
 // 启动时不再加载任何演示/种子数据，库为空等待真实扫描
 // 从磁盘加载持久库（首次启动为空，等待真实扫描）
@@ -1283,9 +1260,9 @@ app.get('/api/tracks', (req: Request, res: Response) => {
     return;
   }
 
-  // 兼容直接请求数组或全量包
+  // 兼容直接请求数组或全量包（同样走 decorateItem：不带 abs_path，附 transcode/封面）
   res.json({
-    items: results,
+    items: results.map(decorateItem),
     total,
     limit: total,
     offset: 0,
@@ -1317,24 +1294,25 @@ app.get('/api/radio', (req: Request, res: Response) => {
 
   const selected = shuffled.slice(0, count);
   res.json({
-    items: selected,
+    items: selected.map(decorateItem),
     total: candidates.length,
     channel: media_type || 'all'
   });
 });
 
-// 5. 获取单个媒体详情
+// 5. 获取单个媒体详情（decorateItem：不带 abs_path，附 transcode/歌词/封面状态）
 app.get('/api/tracks/:id', (req: Request, res: Response) => {
   const item = MEDIA_DB.get(req.params.id);
   if (!item) {
     res.status(404).json({ detail: '未找到该媒体文件' });
     return;
   }
-  res.json(item);
+  res.json(decorateItem(item));
 });
 
 // 5.5 转码状态查询：前端据此显示"转码中 x% / 排队 / 失败"
-// 说明：.mkv 走转码引擎（本机 Chrome 跳过 VA-API 硬解 → MP4 黑屏有声，故统一转 WebM）。
+// 说明：.mkv 走转码引擎（Chrome 无 Matroska demuxer）。按编码分流：AV1/VP9 → webm、
+// H.264/HEVC → mp4（本机 Chrome 实测可解）、纯音频 → webm 音频、其他/探测失败 → VP9+Opus 重编码。
 // 已转好的文件走 stream 的常规路径，此接口只报告排队/进度/失败。
 // 6.0a 全库 .mkv 转码进度汇总（列表顶部统计条）
 app.get('/api/transcode/summary', (req: Request, res: Response) => {
@@ -1362,7 +1340,14 @@ app.get('/api/transcode/:id', (req: Request, res: Response) => {
     res.json({ status: 'done', progress: 100, error: null, ext: item.ext });
     return;
   }
-  const st = fs.statSync(item.abs_path);
+  let st: fs.Stats;
+  try {
+    st = fs.statSync(item.abs_path);
+  } catch {
+    // 源文件已被删除：不能同步抛错（之前 Express 500），报告 error 让 UI 显示「转码失败」
+    res.json({ status: 'error', progress: 0, hasProgressTotal: false, error: '源文件已不存在', ext: item.ext });
+    return;
+  }
   const job = ensureTranscoded(item.abs_path, st.mtimeMs, st.size, item.duration);
   res.json({ ...describeJob(job), ext: item.ext });
 });
@@ -1895,7 +1880,8 @@ app.post('/api/lyrics/prefetch', async (req: Request, res: Response) => {
         if (hit) {
           lyrics[id] = hit.found;
           continue;
-        }        lyrics[id] = (await resolveLyrics(item.title, item.artist, item.duration || 0)) !== null;
+        }
+        lyrics[id] = (await resolveLyrics(item.title, item.artist, item.duration || 0)) !== null;
         await new Promise((r) => setTimeout(r, 200));
       }
     })
@@ -2631,9 +2617,27 @@ app.post('/api/cache/stop', (req: Request, res: Response) => {
 
 // GET /api/cache/status → 4 个任务进度 + 全库缓存统计
 app.get('/api/cache/status', (_req: Request, res: Response) => {
-  const jobs = (Object.keys(CACHE_JOB_LABELS) as CacheJobKind[]).map(
-    (kind) => publicJob(cacheJobs.get(kind) || buildJob(kind))
-  );
+  const jobs = (Object.keys(CACHE_JOB_LABELS) as CacheJobKind[]).map((kind) => {
+    const job = cacheJobs.get(kind);
+    if (job) return publicJob(job);
+    // 未启动的任务返回 idle 快照：之前每次 GET 都 buildJob(kind) 全库遍历，
+    // 系统配置弹窗 2s 轮询时服务端每 2s 做 4 次 34k 条遍历。
+    return {
+      kind,
+      label: CACHE_JOB_LABELS[kind],
+      total: MEDIA_DB.size,
+      done: 0,
+      hits: 0,
+      misses: 0,
+      errors: 0,
+      running: false,
+      stopped: false,
+      startedAt: 0,
+      finishedAt: null,
+      remaining: 0,
+      etaSeconds: 0,
+    };
+  });
   const artists = new Set<string>();
   const albums = new Set<string>();
   for (const item of MEDIA_DB.values()) {

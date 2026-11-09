@@ -63,15 +63,12 @@ export class MediaApiService {
   }
 
   async updateDirectories(directories: string[]): Promise<void> {
-    try {
-      await fetch(this.getFullUrl('/api/directories'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ directories }),
-      });
-    } catch (err) {
-      console.warn('Update directories failed', err);
-    }
+    const res = await fetch(this.getFullUrl('/api/directories'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ directories }),
+    });
+    if (!res.ok) throw new Error(`目录配置保存失败 (${res.status})`);
   }
 
   async scanLibrary(paths?: string[] | string): Promise<ScanResponse> {

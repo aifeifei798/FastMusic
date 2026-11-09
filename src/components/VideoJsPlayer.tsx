@@ -300,8 +300,8 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     setLyricRightInset(Math.max(0, Math.round(cRect.right - vRect.right + letterbox)));
   };
 
-  // MKV 转码进度：.mkv 源需先经 ffmpeg 转成 WebM(VP9+Opus) 侧车文件
-  // （本机 Chrome 跳过 VA-API 硬解，MP4/H.264 会黑屏有声，故统一转 WebM）。
+  // MKV 转码进度：.mkv 源需先经 ffmpeg 转成侧车文件才能播放（Chrome 无 Matroska demuxer）。
+  // 按编码分流：AV1/VP9 → WebM remux、H.264/HEVC → MP4 remux（实测都能正常渲染），其余重编码 VP9+Opus。
   // 这里轮询 /api/transcode/:id 只为显示"排队/转码中 x%"徽章。
   // 关键：done 之后必须停止轮询、且 transcodeTick 至多 +1 一次——
   // 否则 source effect（依赖 transcodeTick）每 2 秒 player.src() 重挂一次，
@@ -918,57 +918,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
     };
   }, [isPlaying, autoHideControls]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
-
-      const player = playerRef.current;
-      if (!player) return;
-
-      switch (e.code) {
-        case 'Space':
-          e.preventDefault();
-          if (player.paused()) {
-            resumeAudioContext();
-            player.play();
-          } else player.pause();
-          break;
-        case 'ArrowLeft':
-          e.preventDefault();
-          player.currentTime(Math.max(0, (player.currentTime() || 0) - 5));
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          player.currentTime(Math.min(player.duration() || 0, (player.currentTime() || 0) + 5));
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          player.volume(Math.min(1, (player.volume() || 0) + 0.1));
-          break;
-        case 'ArrowDown':
-          e.preventDefault();
-          player.volume(Math.max(0, (player.volume() || 0) - 0.1));
-          break;
-        case 'KeyF':
-          e.preventDefault();
-          toggleFullscreen();
-          break;
-        case 'KeyM':
-          e.preventDefault();
-          player.muted(!player.muted());
-          break;
-        case 'KeyL':
-          e.preventDefault();
-          toggleLyrics();
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen]);
+  // 键盘快捷键统一由 App.tsx 的全局 handler 处理（经 window._fastMusicPlayerControls 调度）。
+  // 这里不再重复注册：之前两套 handler 同键双触发，Space/M/L 抵消、←→/↑↓ 幅度翻倍。
+  // 焦点在 .video-js 内时 App handler 会跳过 Space/箭头（交给 video.js 内置快捷键），
+  // 见 App.tsx 的 inPlayer 守卫。
 
   // 恢复 AudioContext。createMediaElementSource 已把媒体元素音频永久路由过 Web Audio 图，
   // 而 AudioContext 在无用户手势时创建会停在 suspended —— 此时元素"在播"但 currentTime 卡在 0，
@@ -1182,7 +1135,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
 
   // 均衡器 垂直 slider 拖操作：从 pointer Y 计算 dB 值（top = max, bottom = min）
   const eqDraggingRef = useRef<boolean>(false);
-  const handleEqScrub = (index: number) => (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleEqScrub = (index: number) => (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = 1 - Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
     const val = Math.round(EQ_MIN_DB + pct * (EQ_MAX_DB - EQ_MIN_DB));
@@ -1248,6 +1201,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       },
       toggleMute,
       toggleFullscreen,
+      toggleLyrics,
       cycleVisualizer: () => {
         const modes = VISUALIZER_MODES.map((m) => m.mode);
         const idx = modes.indexOf(visualizerMode);
@@ -1430,9 +1384,9 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             ) : (
               <Music className="w-3.5 h-3.5 text-accent" />
             )}
-            {/* .mkv 实际流是转码后的 WebM 侧车，徽章显示真实播放格式 */}
+            {/* .mkv 实际流是转码后的侧车（AV1/VP9→webm、H.264/HEVC→mp4），徽章按真实容器显示 */}
             <span className="uppercase text-ink-2">
-              {currentTrack?.ext === '.mkv' ? 'webm' : currentTrack?.ext?.replace('.', '') || 'MEDIA'}
+              {currentTrack?.ext === '.mkv' ? (currentTrack?.transcode?.container || 'webm') : currentTrack?.ext?.replace('.', '') || 'MEDIA'}
             </span>
             <span className="text-muted-2">|</span>
             <span className="text-accent font-mono">
@@ -2124,10 +2078,11 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
               return (
                 <div key={freq} className="flex flex-col items-center gap-1 flex-1">
                   <div
-                    onMouseDown={(e) => { eqDraggingRef.current = true; handleEqScrub(i)(e); }}
-                    onMouseMove={(e) => { if (eqDraggingRef.current) handleEqScrub(i)(e); }}
-                    onMouseUp={(e) => { eqDraggingRef.current = false; }}
-                    className="relative w-1.5 h-24 rounded-full bg-elevated cursor-pointer"
+                    onPointerDown={(e) => { eqDraggingRef.current = true; handleEqScrub(i)(e); }}
+                    onPointerMove={(e) => { if (eqDraggingRef.current) handleEqScrub(i)(e); }}
+                    onPointerUp={() => { eqDraggingRef.current = false; }}
+                    onPointerLeave={() => { eqDraggingRef.current = false; }}
+                    className="relative w-1.5 h-24 rounded-full bg-elevated cursor-pointer [touch-action:none]"
                   >
                     {/* 0dB 基准线 */}
                     <div className="absolute w-2.5 h-0.5 bg-muted-2 pointer-events-none top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2" />
