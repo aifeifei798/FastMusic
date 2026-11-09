@@ -7,6 +7,71 @@ export class MediaApiService {
     this.baseUrl = localStorage.getItem('fastapi_base_url') || '';
   }
 
+  // ================= API 密码 =================
+  // 密码存 localStorage 'fastapi_api_key'；登录成功后服务端发 HttpOnly cookie，
+  // 之后 fetch/img/video 自动带 cookie。fetch 同时带 X-FastMusic-Key 头兜底跨源场景。
+  getApiKey(): string {
+    return localStorage.getItem('fastapi_api_key') || '';
+  }
+
+  setApiKey(key: string) {
+    if (key) localStorage.setItem('fastapi_api_key', key);
+    else localStorage.removeItem('fastapi_api_key');
+  }
+
+  private authHeaders(): Record<string, string> {
+    const key = this.getApiKey();
+    return key ? { 'X-FastMusic-Key': key } : {};
+  }
+
+  /** 统一 fetch 入口：给所有 API 请求附加认证头。 */
+  private async fetchAuth(url: string, init?: RequestInit): Promise<Response> {
+    const headers = { ...(init?.headers as Record<string, string> | undefined), ...this.authHeaders() };
+    return fetch(url, { ...init, headers });
+  }
+
+  async login(key: string): Promise<{ ok: boolean; auth_required: boolean; detail?: string }> {
+    try {
+      this.setApiKey(key);
+      const res = await this.fetchAuth(this.getFullUrl('/api/auth'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+        signal: AbortSignal.timeout(4000),
+      });
+      const data = await res.json().catch(() => ({}));
+      return { ok: res.ok && Boolean(data.ok), auth_required: Boolean(data.auth_required), detail: data.detail };
+    } catch {
+      return { ok: false, auth_required: false };
+    }
+  }
+
+  async logout(): Promise<void> {
+    try {
+      await this.fetchAuth(this.getFullUrl('/api/auth/logout'), { method: 'POST', signal: AbortSignal.timeout(4000) });
+    } catch {}
+  }
+
+  async authStatus(): Promise<{ auth_required: boolean; authenticated: boolean }> {
+    try {
+      const res = await this.fetchAuth(this.getFullUrl('/api/auth/status'), { signal: AbortSignal.timeout(3000) });
+      const data = await res.json().catch(() => ({}));
+      return { auth_required: Boolean(data.auth_required), authenticated: Boolean(data.authenticated) };
+    } catch {
+      return { auth_required: false, authenticated: false };
+    }
+  }
+
+  /** 启动时调用：有保存的密码就静默登录一次，返回认证状态。 */
+  async ensureAuth(): Promise<{ auth_required: boolean; authenticated: boolean }> {
+    const key = this.getApiKey();
+    if (key) {
+      const st = await this.login(key);
+      if (st.ok) return { auth_required: st.auth_required, authenticated: true };
+    }
+    return this.authStatus();
+  }
+
   getBaseUrl(): string {
     return this.baseUrl;
   }
@@ -33,12 +98,15 @@ export class MediaApiService {
   async testConnection(): Promise<{ ok: boolean; message: string; trackCount?: number }> {
     try {
       const url = this.getFullUrl('/api/artists');
-      const res = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(3000) });
+      const res = await this.fetchAuth(url, { method: 'GET', signal: AbortSignal.timeout(3000) });
       if (res.ok) {
-        const tracksRes = await fetch(this.getFullUrl('/api/tracks'), { method: 'GET', signal: AbortSignal.timeout(3000) });
+        const tracksRes = await this.fetchAuth(this.getFullUrl('/api/tracks'), { method: 'GET', signal: AbortSignal.timeout(3000) });
         const tracks = tracksRes.ok ? await tracksRes.json() : [];
         const count = Array.isArray(tracks) ? tracks.length : tracks.total ?? 0;
         return { ok: true, message: t('Express / 媒体后端服务连接成功！'), trackCount: count };
+      }
+      if (res.status === 401) {
+        return { ok: false, message: t('服务需要 API 密码：请在「系统配置」中填写') };
       }
       return { ok: false, message: t('服务响应错误: 状态码 {status}', { status: res.status }) };
     } catch (err: any) {
@@ -53,7 +121,7 @@ export class MediaApiService {
 
   async getDirectories(): Promise<{ path: string; exists: boolean }[]> {
     try {
-      const res = await fetch(this.getFullUrl('/api/directories'), { signal: AbortSignal.timeout(4000) });
+      const res = await this.fetchAuth(this.getFullUrl('/api/directories'), { signal: AbortSignal.timeout(4000) });
       if (!res.ok) throw new Error('Failed to fetch directories');
       const data = await res.json();
       return data.directories || [];
@@ -63,7 +131,7 @@ export class MediaApiService {
   }
 
   async updateDirectories(directories: string[]): Promise<void> {
-    const res = await fetch(this.getFullUrl('/api/directories'), {
+    const res = await this.fetchAuth(this.getFullUrl('/api/directories'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ directories }),
@@ -80,7 +148,7 @@ export class MediaApiService {
       body = { path: paths.trim() };
     }
 
-    const res = await fetch(endpoint, {
+    const res = await this.fetchAuth(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -94,7 +162,7 @@ export class MediaApiService {
 
   async getArtists(): Promise<ArtistSummary[]> {
     try {
-      const res = await fetch(this.getFullUrl('/api/artists'), { signal: AbortSignal.timeout(4000) });
+      const res = await this.fetchAuth(this.getFullUrl('/api/artists'), { signal: AbortSignal.timeout(4000) });
       if (!res.ok) throw new Error('Failed to fetch artists');
       return await res.json();
     } catch (err) {
@@ -108,7 +176,7 @@ export class MediaApiService {
       const endpoint = this.getFullUrl('/api/albums');
       const url = new URL(endpoint, window.location.origin);
       if (artist) url.searchParams.append('artist', artist);
-      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(4000) });
+      const res = await this.fetchAuth(url.toString(), { signal: AbortSignal.timeout(4000) });
       if (!res.ok) throw new Error('Failed to fetch albums');
       return await res.json();
     } catch (err) {
@@ -144,7 +212,7 @@ export class MediaApiService {
       url.searchParams.append('limit', String(limit));
       url.searchParams.append('offset', String(offset));
 
-      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(4000) });
+      const res = await this.fetchAuth(url.toString(), { signal: AbortSignal.timeout(4000) });
       if (!res.ok) throw new Error('Failed to fetch tracks');
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -171,7 +239,7 @@ export class MediaApiService {
 
   async getTrackDetail(trackId: string): Promise<MediaItem | null> {
     try {
-      const res = await fetch(this.getFullUrl(`/api/tracks/${trackId}`), { signal: AbortSignal.timeout(4000) });
+      const res = await this.fetchAuth(this.getFullUrl(`/api/tracks/${trackId}`), { signal: AbortSignal.timeout(4000) });
       if (!res.ok) return null;
       return await res.json();
     } catch (err) {
@@ -183,7 +251,7 @@ export class MediaApiService {
   // Chrome 没有 Matroska demuxer。前端据此显示"排队 / 转码中 x% / 已就绪"。
   async getTranscodeStatus(trackId: string): Promise<TranscodeStatus | null> {
     try {
-      const res = await fetch(this.getFullUrl(`/api/transcode/${trackId}`), {
+      const res = await this.fetchAuth(this.getFullUrl(`/api/transcode/${trackId}`), {
         signal: AbortSignal.timeout(6000),
       });
       if (!res.ok) return null;
@@ -196,7 +264,7 @@ export class MediaApiService {
   // 全库 .mkv 转码进度汇总（列表顶部统计条）
   async getTranscodeSummary(): Promise<TranscodeSummary | null> {
     try {
-      const res = await fetch(this.getFullUrl('/api/transcode/summary'), {
+      const res = await this.fetchAuth(this.getFullUrl('/api/transcode/summary'), {
         signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) return null;
@@ -212,7 +280,7 @@ export class MediaApiService {
     try {
       const url = new URL(this.getFullUrl('/api/transcode/status'), window.location.origin);
       url.searchParams.append('ids', ids.join(','));
-      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8000) });
+      const res = await this.fetchAuth(url.toString(), { signal: AbortSignal.timeout(8000) });
       if (!res.ok) return {};
       const data = (await res.json()) as { items: Array<{ id: string; transcode: TranscodeInfo | null }> };
       const map: Record<string, TranscodeInfo> = {};
@@ -234,7 +302,7 @@ export class MediaApiService {
   async prefetchCovers(ids: string[]): Promise<Record<string, string | null>> {
     if (ids.length === 0) return {};
     try {
-      const res = await fetch(this.getFullUrl('/api/cover/prefetch'), {
+      const res = await this.fetchAuth(this.getFullUrl('/api/cover/prefetch'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids }),
@@ -252,7 +320,7 @@ export class MediaApiService {
   async prefetchLyrics(ids: string[]): Promise<{ requested: number; resolved: number; cached: number; lyrics: Record<string, boolean> }> {
     if (ids.length === 0) return { requested: 0, resolved: 0, cached: 0, lyrics: {} };
     try {
-      const res = await fetch(this.getFullUrl('/api/lyrics/prefetch'), {
+      const res = await this.fetchAuth(this.getFullUrl('/api/lyrics/prefetch'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids }),
@@ -274,7 +342,7 @@ export class MediaApiService {
   // 全库缓存任务（系统配置里的 4 个按钮）：服务端后台跑，前端轮询进度
   async getCacheStatus(): Promise<CacheStatus> {
     try {
-      const res = await fetch(this.getFullUrl('/api/cache/status'), {
+      const res = await this.fetchAuth(this.getFullUrl('/api/cache/status'), {
         signal: AbortSignal.timeout(15000),
       });
       if (!res.ok) return { jobs: [], stats: null };
@@ -287,7 +355,7 @@ export class MediaApiService {
 
   async runCacheJob(kind: CacheJobKind): Promise<CacheJob | null> {
     try {
-      const res = await fetch(this.getFullUrl('/api/cache/run'), {
+      const res = await this.fetchAuth(this.getFullUrl('/api/cache/run'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind }),
@@ -302,7 +370,7 @@ export class MediaApiService {
 
   async stopCacheJob(kind: CacheJobKind): Promise<CacheJob | null> {
     try {
-      const res = await fetch(this.getFullUrl('/api/cache/stop'), {
+      const res = await this.fetchAuth(this.getFullUrl('/api/cache/stop'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind }),
@@ -323,7 +391,7 @@ export class MediaApiService {
       url.searchParams.append('title', title || '');
       if (artist) url.searchParams.append('artist', artist);
       if (duration) url.searchParams.append('duration', String(Math.round(duration)));
-      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(12000) });
+      const res = await this.fetchAuth(url.toString(), { signal: AbortSignal.timeout(12000) });
       if (!res.ok) return null;
       const data = await res.json();
       return data && typeof data === 'object' ? (data as LyricsResult) : null;
@@ -340,7 +408,7 @@ export class MediaApiService {
       if (channel !== 'all') url.searchParams.append('media_type', channel);
       url.searchParams.append('count', String(count));
 
-      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(4000) });
+      const res = await this.fetchAuth(url.toString(), { signal: AbortSignal.timeout(4000) });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.items) && data.items.length > 0) {

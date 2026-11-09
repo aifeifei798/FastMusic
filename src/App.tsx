@@ -10,7 +10,8 @@ import {
   Sun,
   Moon,
   Globe,
-  MoreHorizontal
+  MoreHorizontal,
+  AlertCircle
 } from 'lucide-react';
 import { MediaItem, ArtistSummary, AlbumSummary, PlayMode, PlayHistoryItem, RadioChannel, TrackSort } from './types/media';
 import { mediaApi } from './services/api';
@@ -323,7 +324,22 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
+  // API 认证：启动时先用保存的密码静默登录，完成后才加载库；未授权时列表为空并显示横幅
+  const [authNeeded, setAuthNeeded] = useState(false);
+  const authCheckedRef = useRef(false);
   useEffect(() => {
+    let alive = true;
+    mediaApi.ensureAuth().then((st) => {
+      if (!alive) return;
+      setAuthNeeded(st.auth_required && !st.authenticated);
+      authCheckedRef.current = true;
+      loadData();
+    });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!authCheckedRef.current) return;
     loadData();
   }, [loadData]);
 
@@ -790,6 +806,12 @@ export default function App() {
       </header>
 
       {/* Main App Canvas */}
+      {authNeeded && (
+        <div className="shrink-0 border-b border-line bg-app px-4 py-2 flex items-center justify-center gap-2 text-xs text-accent-soft">
+          <AlertCircle className="w-3.5 h-3.5 text-accent shrink-0" />
+          <span>{t('需要 API 密码：请在「系统配置」中填写并登录')}</span>
+        </div>
+      )}
       <main className="flex-1 min-h-0 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-4 flex flex-col gap-3 sm:gap-4">
 
         {/* ================= HERO MEDIA PLAYER SECTION ================= */}

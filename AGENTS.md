@@ -57,7 +57,17 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
 
 - **No AI/Gemini integration**: the project originated from Google AI Studio, but the unused
   `dotenv` / `@google/genai` / `motion` deps and the `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API`
-  entry in `metadata.json` have been removed. There is no `.env.local` and no API key is needed.
+  entry in `metadata.json` have been removed. There is no `.env.local`; no AI key is needed.
+- **API 密码认证（server.ts）**：`.env`（gitignored，与 server.ts 同目录）设 `FASTMUSIC_API_KEY`
+  后所有 `/api/*` 需密码：`POST /api/auth {key}` 登录发 HttpOnly cookie `fastmusic_key`
+  （值=sha256(`fastmusic-session:`+key)，30 天；img/video/fetch 自动带，URL 不泄漏密码）、
+  `X-FastMusic-Key` 头（CORS allowedHeaders 已含）、或 `?key=` 查询参数（curl 兜底）。
+  豁免：`/api/health`（server.sh 健康检查依赖）与 `/api/auth`、`/api/auth/status`、`/api/auth/logout`。
+  未设 KEY = 不启用（向后兼容）；server.ts 手写解析 .env（不引 dotenv，真实环境变量优先），
+  密码比较用 crypto.timingSafeEqual。客户端：密码存 localStorage `fastapi_api_key`，
+  api.ts `fetchAuth()` 给所有 fetch 加头、`ensureAuth()` 启动静默登录（App 初始 effect 登录
+  完成后才 loadData，未授权显示横幅「需要 API 密码」并由 SystemConfigModal「API 密码」段
+  保存并登录/清除密码）。改密码后重启服务、客户端重新登录。
 - **Scan dirs default to empty**: `CONFIGURED_DIRS` is seeded from `MEDIA_DIRS="/a,/b"` (comma or
   semicolon separated) and then from `fastmusic_db.json`'s `dirs` array. Add real dirs via
   `POST /api/directories` or the SystemConfigModal UI (页头/页脚的「系统配置」). (`bun.lock` was also dropped — npm is the

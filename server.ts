@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import compression from 'compression';
 import path from 'path';
@@ -19,12 +19,84 @@ const HOST = process.env.HOST || '0.0.0.0';
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Range'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Range', 'X-FastMusic-Key'],
   exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length', 'Content-Type']
 }));
 app.use(express.json());
 // gzip 响应：/api/artists(764KB) /api/albums(2.3MB) /tracks 页 JSON 体积降 ~5x
 app.use(compression());
+
+// ================= API 密码认证 =================
+// .env（与本文件同目录）里的 FASTMUSIC_API_KEY：局域网/公网暴露时防止任何人连接 API。
+// 未设置 = 不启用认证（向后兼容）。真实环境变量优先于 .env 文件；不引 dotenv，手写解析。
+function loadDotEnv(): void {
+  try {
+    const text = fs.readFileSync(path.join(__dirname, '.env'), 'utf8');
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq <= 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      // 去掉成对引号；无引号时去掉行尾注释（' #' 才当注释，' #' 前的值保留）
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      } else {
+        const hash = val.indexOf(' #');
+        if (hash >= 0) val = val.slice(0, hash).trim();
+      }
+      if (process.env[key] === undefined || process.env[key] === '') process.env[key] = val;
+    }
+  } catch {
+    // .env 不存在/不可读：视为未启用密码
+  }
+}
+loadDotEnv();
+
+const API_KEY = (process.env.FASTMUSIC_API_KEY || '').trim();
+// cookie 里放派生 token（sha256），不直接放密码原文；泄露 cookie 也不暴露密码本身。
+const SESSION_TOKEN = API_KEY ? crypto.createHash('sha256').update(`fastmusic-session:${API_KEY}`).digest('hex') : '';
+
+function keyMatches(provided: string): boolean {
+  const expected = Buffer.from(API_KEY, 'utf8');
+  const got = Buffer.from(provided || '', 'utf8');
+  if (got.length !== expected.length) return false;
+  return crypto.timingSafeEqual(got, expected);
+}
+
+function cookieToken(req: Request): string {
+  const raw = req.headers.cookie || '';
+  for (const part of raw.split(';')) {
+    const [k, v] = part.split('=');
+    if (k.trim() === 'fastmusic_key') return (v || '').trim();
+  }
+  return '';
+}
+
+function authorized(req: Request): boolean {
+  if (!API_KEY) return true;
+  if (SESSION_TOKEN && cookieToken(req) === SESSION_TOKEN) return true;
+  if (typeof req.query.key === 'string' && keyMatches(req.query.key)) return true;
+  const header = req.get('X-FastMusic-Key');
+  if (header && keyMatches(header)) return true;
+  return false;
+}
+
+// 挂载在 /api 路由之前；app.use('/api') 里 req.path 已去掉 '/api' 前缀。
+// 豁免：/health（server.sh 健康检查依赖）、/auth 登录/状态/登出本身。
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  const p = req.path;
+  if (!API_KEY || p === '/health' || p === '/auth' || p === '/auth/status' || p === '/auth/logout') {
+    next();
+    return;
+  }
+  if (authorized(req)) {
+    next();
+    return;
+  }
+  res.status(401).json({ error: 'unauthorized', detail: '需要 API 密码：登录 /api/auth，或带 X-FastMusic-Key 头 / ?key= 参数' });
+});
 
 // ================= 配置与支持格式 =================
 const AUDIO_EXTS = new Set(['.mp3', '.flac', '.webm', '.wav', '.ogg', '.m4a']);
@@ -2662,6 +2734,32 @@ app.get('/api/cache/status', (_req: Request, res: Response) => {
 });
 
 // 7. 健康检查
+// ================= 登录 / 认证状态 =================
+// 登录成功把派生 token 写进 HttpOnly cookie；之后 <img>/<video>/fetch 自动带 cookie，
+// URL 里不出现密码。登出清 cookie。auth/status 供前端显示状态与是否需要密码。
+app.get('/api/auth/status', (req: Request, res: Response) => {
+  res.json({ auth_required: Boolean(API_KEY), authenticated: authorized(req) });
+});
+
+app.post('/api/auth', (req: Request, res: Response) => {
+  const key = typeof req.body?.key === 'string' ? req.body.key : '';
+  if (!API_KEY) {
+    res.json({ ok: true, auth_required: false });
+    return;
+  }
+  if (!keyMatches(key)) {
+    res.status(401).json({ ok: false, error: 'unauthorized', detail: 'API 密码不正确' });
+    return;
+  }
+  res.setHeader('Set-Cookie', `fastmusic_key=${SESSION_TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+  res.json({ ok: true, auth_required: true });
+});
+
+app.post('/api/auth/logout', (_req: Request, res: Response) => {
+  res.setHeader('Set-Cookie', 'fastmusic_key=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+  res.json({ ok: true });
+});
+
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', server: 'Express Media Server', total_tracks: MEDIA_DB.size });
 });

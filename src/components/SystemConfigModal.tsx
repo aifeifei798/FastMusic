@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Server,
+  KeyRound,
   RefreshCw,
   CheckCircle2,
   AlertCircle,
@@ -130,6 +131,30 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
       }
     }).catch(() => {});
   }, [isOpen]);
+
+  // API 密码认证：密码存 localStorage，登录成功后服务端发 HttpOnly cookie
+  const [apiKey, setApiKey] = useState<string>(mediaApi.getApiKey());
+  const [authState, setAuthState] = useState<{ auth_required: boolean; authenticated: boolean } | null>(null);
+  const [authBusy, setAuthBusy] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    mediaApi.authStatus().then(setAuthState).catch(() => setAuthState(null));
+  }, [isOpen]);
+
+  const handleSaveApiKey = async () => {
+    setAuthBusy(true);
+    const res = await mediaApi.login(apiKey.trim());
+    setAuthState(res.ok ? { auth_required: res.auth_required, authenticated: true } : await mediaApi.authStatus());
+    if (res.ok) refreshRef.current();
+    setAuthBusy(false);
+  };
+
+  const handleClearApiKey = async () => {
+    mediaApi.setApiKey('');
+    await mediaApi.logout();
+    setAuthState(await mediaApi.authStatus());
+  };
 
   // 轮询缓存任务进度（2s），任务结束时刷新媒体库
   useEffect(() => {
@@ -553,6 +578,62 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                   <AlertCircle className="w-4 h-4 shrink-0 text-accent" />
                 )}
                 <span>{testResult.message}</span>
+              </div>
+            )}
+          </div>
+
+          {/* API 密码认证 */}
+          <div className="p-4 rounded-xl bg-app border border-line/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-ink-2 flex items-center gap-1.5">
+                <KeyRound className="w-4 h-4 text-accent" />
+                {t('API 密码')}
+              </span>
+              <span className="text-[11px] text-muted">
+                {authState === null
+                  ? t('检测中…')
+                  : !authState.auth_required
+                    ? t('服务器未启用密码')
+                    : authState.authenticated
+                      ? t('已登录')
+                      : t('未登录')}
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-2">{t('需与服务器 .env 的 FASTMUSIC_API_KEY 一致；留空则不认证')}</p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                aria-label={t('API 密码')}
+                placeholder={t('输入 API 密码')}
+                className="flex-1 px-3 py-2 bg-surface border border-line rounded-xl text-ink-2 font-mono text-xs focus:outline-none focus:border-accent"
+              />
+              <button
+                onClick={handleSaveApiKey}
+                disabled={authBusy}
+                className="px-4 py-2 bg-surface-2 hover:bg-elevated text-ink-2 rounded-xl font-medium transition-colors flex items-center gap-1.5 shrink-0"
+              >
+                {authBusy ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-accent" />
+                )}
+                <span>{t('保存并登录')}</span>
+              </button>
+              {authState?.authenticated && (
+                <button
+                  onClick={handleClearApiKey}
+                  className="px-3 py-2 bg-surface-2 hover:bg-elevated text-muted hover:text-ink-2 rounded-xl text-xs transition-colors shrink-0"
+                >
+                  <span>{t('清除密码')}</span>
+                </button>
+              )}
+            </div>
+            {authState && authState.auth_required && !authState.authenticated && (
+              <div className="p-2.5 rounded-xl border bg-accent-dim/40 border-accent-dim flex items-center gap-2 text-xs text-accent-soft">
+                <AlertCircle className="w-4 h-4 shrink-0 text-accent" />
+                <span>{t('密码不正确或未填写：所有 API 请求返回 401')}</span>
               </div>
             )}
           </div>

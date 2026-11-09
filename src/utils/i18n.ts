@@ -476,6 +476,23 @@ const EN: Record<string, string> = {
   '服务端地址': 'Server address',
   '新增扫描目录路径': 'New scan directory path',
   '搜索曲目、歌手或专辑': 'Search tracks, artists or albums',
+  // API 密码认证（auth）
+  'API 密码': 'API password',
+  '检测中…': 'Checking…',
+  '服务器未启用密码': 'Password auth not enabled on server',
+  '已登录': 'Signed in',
+  '未登录': 'Not signed in',
+  '需与服务器 .env 的 FASTMUSIC_API_KEY 一致；留空则不认证':
+    'Must match FASTMUSIC_API_KEY in the server .env; leave empty for no auth',
+  '输入 API 密码': 'Enter API password',
+  '保存并登录': 'Save & sign in',
+  '清除密码': 'Clear password',
+  '密码不正确或未填写：所有 API 请求返回 401':
+    'Password missing or wrong: all API requests return 401',
+  '服务需要 API 密码：请在「系统配置」中填写':
+    'Server requires an API password: enter it in System config',
+  '需要 API 密码：请在「系统配置」中填写并登录':
+    'API password required: enter it in System config and sign in',
 };
 
 // 服务端返回的提示里已经插入了动态数字，无法直接作为 t() 的 key，

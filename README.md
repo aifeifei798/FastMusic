@@ -113,6 +113,7 @@ docker run -d --name fastmusic -p 3000:3000 \
 | `LYRIC_PREFETCH_CONCURRENCY` | `3` | 全库歌词任务并发数(网易云对高频请求会限流,别调太高) |
 | `LYRIC_PREFETCH_DELAY_MS` | `200` | 全库歌词任务每条之间的节流间隔 |
 | `NODE_ENV` | dev | `production` 时服务预构建的 `dist/`,否则内嵌 Vite dev server |
+| `FASTMUSIC_API_KEY` | 空 | API 密码。设置后所有 `/api/*` 需密码(登录 `POST /api/auth` 发 HttpOnly cookie,或 `X-FastMusic-Key` 头 / `?key=` 参数;`/api/health` 与 `/api/auth/*` 免鉴权)。写在 `.env`(已 gitignore,参考 `.env.example`)或直接设环境变量;留空 = 不启用 |
 
 扫描目录与全库缓存任务都在「系统配置」(SystemConfigModal)里配置,也可用 `POST /api/directories` 等 API 直接操作。
 
