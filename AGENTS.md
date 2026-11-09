@@ -64,7 +64,7 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   only toolchain; `server.sh` uses `npm install`.)
 - **查询缓存（server.ts）**：`/api/tracks` 的排序结果按 `sort:seed` 缓存（`sortCache`，最多 12 条，库增删时清空），搜索用的小写字段惰性缓存（`lowerCache`，不写进 db 文件），`.mkv` sidecar 的 stat 结果按源路径缓存（`sidecarStatCache`，`srcMtime` 变化即失效，转码完成时写入），`/api/artists` 全量列表缓存（`artistsCache`）与 `/api/albums` 按 `artist` 参数分键缓存（`albumsCache`；缓存里存 `_coverId/_sampleId`，响应时每次重新解析 `avatar_url/cover_url`，所以封面预取新增缓存后不需要失效列表缓存）。**任何 `MEDIA_DB` 增删必须调用 `invalidateQueryCaches()`**，否则排序/搜索/歌手/专辑会返回旧数据。实测：`sort=title` 110ms→~5ms，`ready_only=1` 90ms→~3ms，`/api/artists` 18ms→7ms，`/api/albums` 36ms→18ms。扫描过程中 `scheduleDbSave()` 每 5s 防抖落盘一次 `fastmusic_db.json`（15MB 写一次 ~200ms），所以中途被 kill 不会丢整个进度。
 - **流式响应（`serveFileWithRange()`）**：支持后缀 Range（`bytes=-N`）、越界 416（带 `Content-Range: bytes */size`）、非法 Range 400、HEAD 只写头；`ETag` = `"size-mtime"`（sidecar 重新生成时自动变化），`Cache-Control: no-cache`；**只有不带 Range 的请求才可能返回 304**（带 Range 返回 304 会让播放器寻道失效）。两个 stream 路径都挂 `error` handler —— 之前文件被删 / IO 错误会走 uncaughtException 崩掉整个进程。
-- **优雅退出**：`SIGINT`/`SIGTERM` → `saveDbToDisk()` + `saveCoverIndex()` + `saveLyricCache()` → kill `activeTranscodeProcs`（所有 ffmpeg 子进程）→ `httpServer.close()`，8s 兜底 `process.exit(0)`。启动时 `cleanupStaleTmpFiles()` 删除上次被 kill 残留的 `*.fastmusic.tmp`。**坑**：`node node_modules/tsx/dist/cli.mjs server.ts` 会 fork 一个子进程，信号只到父进程，所以 Dockerfile 的 CMD 用 `node --require ./node_modules/tsx/dist/preflight.cjs --import file:///app/node_modules/tsx/dist/loader.mjs server.ts`（单进程，SIGTERM 直接命中 server）。
+- **优雅退出**：`SIGINT`/`SIGTERM` → `saveDbToDisk()` + `saveCoverIndex()` + `saveLyricCache()` → kill `activeTranscodeProcs`（所有 ffmpeg 子进程）→ `httpServer.close()`，8s 兜底 `process.exit(0)`。启动时 `cleanupStaleTmpFiles()` 删除上次被 kill 残留的 `*.fastmusic.tmp`（**只遍历 `.mkv` 条目**，因为中间文件只由 mkv 转码产生；全库 33.9k 条逐条 stat 在 FUSE/NTFS 媒体盘上要 1s+、冷缓存几十秒）。**坑**：`node node_modules/tsx/dist/cli.mjs server.ts` 会 fork 一个子进程，信号只到父进程，所以 Dockerfile 的 CMD 用 `node --require ./node_modules/tsx/dist/preflight.cjs --import file:///app/node_modules/tsx/dist/loader.mjs server.ts`（单进程，SIGTERM 直接命中 server）。
 - **Scan is persistent + incremental** (rewritten): the library is persisted to
   `fastmusic_db.json` next to `server.ts` (`{dirs, items[]}`, atomic tmp+rename). Startup
   calls `loadDbFromDisk()` (no more `MEDIA_DB.clear()`), so a restart keeps the index.
@@ -108,7 +108,8 @@ or `page/page_size` paging), `/api/radio`, `/api/tracks/:id`, `/api/stream/:id`,
   - probe failed / other codec → VP9+Opus re-encode into WebM (`libvpx-vp9 -deadline good -crf 33`).
   Sidecars are keyed by **source path** (`transcodeJobs`), and `findFreshSidecar()` checks both
   `.mkv.webm` and `.mkv.mp4`; `isSidecarFile()` makes the scanner skip both.
-  `queueAllMkvTranscodes()` runs at startup and enqueues every `.mkv` without a fresh sidecar
+  `queueAllMkvTranscodes()` 在 `app.listen` 回调里用 `setImmediate` 启动（不再在模块顶层同步跑），
+  enqueues every `.mkv` without a fresh sidecar
   (small files first, `TRANCODE_CONCURRENCY` default 3). Disable with `PRETRANCODE_MKV=0`.
   The scanner skips sidecars via `isSidecarFile()`, so they are never indexed as audio/video.
   Client `VideoJsPlayer.tsx` uses `video/webm` for `.mkv` and polls `/api/transcode/:id` only to render

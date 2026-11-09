@@ -5,7 +5,6 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
 import { parseFile } from 'music-metadata';
 import { spawn, ChildProcess } from 'child_process';
 
@@ -554,7 +553,9 @@ function cleanupStaleTmpFiles(): void {
   // 才不会把它们入库；启动时清一遍更干净。
   let removed = 0;
   for (const item of MEDIA_DB.values()) {
-    if (!item.abs_path) continue;
+    // 中间文件只会由转码引擎产生，而转码只接受 .mkv（见 /api/transcode/:id 与 stream 路由），
+    // 所以没必要对全库 33.9k 条逐条 stat —— 媒体盘是 FUSE/NTFS 时这要 1s+，冷缓存几十秒。
+    if (item.ext !== '.mkv' || !item.abs_path) continue;
     const tmp = `${item.abs_path}.fastmusic.tmp`;
     try {
       if (fs.existsSync(tmp)) {
@@ -994,8 +995,8 @@ loadDbFromDisk();
 if (CONFIGURED_DIRS.length === 0) {
   console.warn('[Config] 未配置扫描目录。设置环境变量 MEDIA_DIRS="/music,/mtv" 或在「服务器配置」里添加后扫描。');
 }
-// 启动即排队后台预转码所有 .mkv（单并发、小文件优先），避免 MTV 首播黑屏等待
-queueAllMkvTranscodes();
+// 注意：后台预转码队列不再在这里启动 —— 它要遍历全库 .mkv 并 stat 侧车文件
+// （FUSE/NTFS 媒体盘上 1s+），放到 app.listen 回调里异步执行，避免拖慢首屏。
 
 // ================= API 路由 =================
 
@@ -2668,6 +2669,8 @@ async function startServer() {
   cleanupStaleTmpFiles(); // 清理上次被 kill 时残留的转码中间文件
 
   if (process.env.NODE_ENV !== 'production') {
+    // 按需加载：vite 只用于 dev 中间件，静态 import 会让生产启动也白付一次模块加载成本。
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -2682,6 +2685,9 @@ async function startServer() {
 
   const httpServer = app.listen(PORT, HOST, () => {
     console.log(`[Express Media Server] 运行在 http://${HOST}:${PORT}`);
+    // 预转码排队放在 listen 之后：逐个 .mkv stat 源文件与侧车，
+    // 放在监听前会把健康检查/首屏推迟 1s+（冷缓存更久）。晚几十毫秒入队无任何影响。
+    setImmediate(queueAllMkvTranscodes);
   });
 
   // 优雅退出：Docker/systemd 的 SIGTERM 先落盘缓存、停转码子进程，再关闭监听。
