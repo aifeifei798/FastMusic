@@ -63,7 +63,7 @@ export const RadioStationBanner: React.FC<RadioStationBannerProps> = ({
         <span className="text-[11px] font-bold tracking-wider text-accent font-mono whitespace-nowrap">
           <span className="hidden sm:inline">FastMusic FM · </span>{freq}
         </span>
-        <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-accent/20 text-accent-soft border border-accent/30">
+        <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-accent/20 text-accent-soft border border-accent/30">
           {isPlaying ? t('LIVE 随心广播') : t('随心电台正在漫游')}
         </span>
       </div>

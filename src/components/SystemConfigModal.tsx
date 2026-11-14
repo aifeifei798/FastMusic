@@ -343,7 +343,7 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
               )}
             </div>
 
-            <p className="text-[11px] text-muted-2 mb-3 leading-relaxed">
+            <p className="text-xs text-muted-2 mb-3 leading-relaxed">
               {t('任务在服务器后台运行，关闭弹窗不会中断；结果持久化到')}
               <code className="text-ink-3"> covers/</code> {t('与')}
               <code className="text-ink-3"> lyrics/</code>{t('，中断后再次启动会自动跳过已缓存的条目。')}
@@ -370,7 +370,7 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                         </div>
                         <div className="min-w-0">
                           <div className="text-xs font-medium text-ink-2">{t(task.title)}</div>
-                          <div className="text-[11px] text-muted-2">{t(task.hint)}</div>
+                          <div className="text-xs text-muted-2">{t(task.hint)}</div>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -449,7 +449,7 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                   <Clock className="w-4 h-4 text-amber" />
                   <span>{t('断点续播')}</span>
                 </span>
-                <p className="text-[11px] text-muted-2 leading-relaxed">
+                <p className="text-xs text-muted-2 leading-relaxed">
                   {t('记住收听歌曲的时间，重新打开同一曲目继续播放。默认关闭。')}
                 </p>
               </div>
@@ -483,7 +483,7 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
               )}
             </div>
 
-            <p className="text-[11px] text-muted-2 mb-3 leading-relaxed">
+            <p className="text-xs text-muted-2 mb-3 leading-relaxed">
               {t('Chrome 不能直接播放 .mkv，服务端把每个 .mkv 无损换容器成 sidecar（AV1/VP9 → WebM，H.264/HEVC → MP4），写在源文件旁边；sidecar 比源文件新就不再重复转码。')}
               {t('启动时自动排队全库转码（并发 ')}
               <code className="text-ink-3">TRANCODE_CONCURRENCY</code>
@@ -532,7 +532,7 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                 </div>
               </div>
             ) : (
-              <p className="text-[11px] text-muted-2">{t('没有 .mkv 文件，无需转码。')}</p>
+              <p className="text-xs text-muted-2">{t('没有 .mkv 文件，无需转码。')}</p>
             )}
           </div>
 
@@ -599,7 +599,7 @@ export const SystemConfigModal: React.FC<SystemConfigModalProps> = ({
                       : t('未登录')}
               </span>
             </div>
-            <p className="text-[11px] text-muted-2">{t('需与服务器 .env 的 FASTMUSIC_API_KEY 一致；留空则不认证')}</p>
+            <p className="text-xs text-muted-2">{t('需与服务器 .env 的 FASTMUSIC_API_KEY 一致；留空则不认证')}</p>
             <div className="flex gap-2">
               <input
                 type="password"

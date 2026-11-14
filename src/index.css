@@ -32,8 +32,10 @@
   --color-ink: #f4f4f6;
   --color-ink-2: #d3d3da;
   --color-ink-3: #a3a3ad;
-  --color-muted: #8a8a94;
-  --color-muted-2: #6d6d77;
+  /* muted/muted-2 调亮到 WCAG AA(≥4.5:1): 旧值 #8a8a94/#6d6d77 在 surface-2 上只有
+     ~5.3/3.7:1, 11-12px 的说明文字读不清。层级保持 ink-3 > muted > muted-2 > faint。 */
+  --color-muted: #98989f;
+  --color-muted-2: #84848e;
   --color-faint: #45454f;
   --color-accent: #ff5a72;
   --color-accent-soft: #ffb2c1;
@@ -71,8 +73,11 @@
   --color-ink: #1d1d1f;
   --color-ink-2: #3c3c44;
   --color-ink-3: #6c6c75;
-  --color-muted: #7d7d86;
-  --color-muted-2: #9b9ba4;
+  /* 浅色主题灰阶空间不足: muted/muted-2 若保持比 ink-3 浅一档(旧值 #7d7d86/#9b9ba4)
+     在白卡/页面底上只有 3.7/2.8:1, 达不到 AA。灰阶压到与 ink-3 同一档(#6c6c76, 4.6-5.2:1),
+     次级信息靠字号/字重区分层级。 */
+  --color-muted: #6c6c76;
+  --color-muted-2: #6c6c76;
   --color-faint: #c3c3cc;
   --color-accent: #d63b55;
   --color-accent-soft: #e56b83;
@@ -95,9 +100,22 @@
 
 /* 非颜色变量: 滚动条 / 歌词阴影 / 背景光晕, 同样按主题切换 */
 :root {
+  /* 原生控件跟随主题: 没挂 SCROLLBAR_CLASSES 的滚动容器、<select> 弹层、
+     表单控件的默认色不再是白底黑条, 而是跟随深/浅主题。 */
+  color-scheme: dark;
   --scrollbar-thumb: rgba(255, 255, 255, 0.15);
   --scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
   --lyric-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+  /* 唱片/封面上的固定叠色: 唱片与封面在两个主题里都是深色媒体面, 这些纹理色不随主题切换。
+     从 VideoJsPlayer 的内联 rgba 收口到这里, 四档纹路透明度统一成一档。 */
+  --vinyl-groove: rgba(255, 255, 255, 0.08);
+  --vinyl-sheen: rgba(255, 255, 255, 0.12);
+  --cover-scrim: rgba(0, 0, 0, 0.55);
+  --cover-ring: rgba(0, 0, 0, 0.6);
+  /* 压在视频画面上的歌词阴影: 画面永远偏暗, 两个主题都用黑 scrim, 不随主题翻转
+     (--lyric-shadow 浅色主题会变白色光晕, 只用于音频舞台, 两者不能混用)。 */
+  --video-lyric-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+  --video-lyric-shadow-strong: 0 1px 8px rgba(0, 0, 0, 0.6), 0 0 22px var(--lyric-glow);
   --lyric-glow: rgba(255, 90, 114, 0.22);
   --accent-glow: rgba(255, 90, 114, 0.12);
   --amber-glow: rgba(255, 192, 74, 0.10);
@@ -105,6 +123,7 @@
 }
 
 [data-theme="light"] {
+  color-scheme: light;
   --scrollbar-thumb: rgba(0, 0, 0, 0.14);
   --scrollbar-thumb-hover: rgba(0, 0, 0, 0.24);
   --lyric-shadow: 0 1px 6px rgba(255, 255, 255, 0.7);
@@ -112,6 +131,19 @@
   --accent-glow: rgba(214, 59, 85, 0.07);
   --amber-glow: rgba(176, 118, 31, 0.06);
   --glow-opacity: 0.7;
+}
+
+/* Firefox 不支持 ::-webkit-scrollbar, 各滚动容器上的 SCROLLBAR_CLASSES 在
+   Firefox 里完全不生效, 滚动条一直是系统默认的白色。用标准属性
+   scrollbar-color/width 兜底(两者都可继承, 挂在 :root 全站生效)。
+   @supports 检测把作用域限定在不认 webkit 滚动条伪元素的浏览器:
+   Chrome/Safari 一旦也命中这条, 标准属性会禁用它们的 ::-webkit-scrollbar
+   自定义样式, 所以必须排除。 */
+@supports not selector(::-webkit-scrollbar) {
+  :root {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+    scrollbar-width: thin;
+  }
 }
 
 /* 页头后面的一层暖色光晕: 让深色/浅色页面都跟徽标的 rose→amber 渐变呼应。

@@ -35,6 +35,7 @@ import { MediaItem, PlayMode, TranscodeStatus } from '../types/media';
 import { AudioVisualizer, VisualizerMode } from './AudioVisualizer';
 import { mediaApi } from '../services/api';
 import { t } from '../utils/i18n';
+import { SCROLLBAR_CLASSES } from '../utils/ui';
 
 // --- 10段均衡器 (Equalizer) 配置 ---
 // 均衡器 采用 audealize 的图形均衡器 模型：N 个 "peaking" BiquadFilter 串联，
@@ -1265,10 +1266,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
           <div className={`relative w-11 h-11 rounded-full bg-vinyl border-2 border-line-strong/70 flex items-center justify-center overflow-hidden shrink-0 ${isPlaying ? 'vinyl-spin' : ''}`}>
             <svg viewBox="0 0 44 44" aria-hidden="true" className="absolute inset-0 w-full h-full">
               <circle cx="22" cy="22" r="20" fill="var(--color-vinyl)" />
-              <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
-              <circle cx="22" cy="22" r="13" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1" />
-              <circle cx="22" cy="22" r="8" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1" />
-              <path d="M22 2 A20 20 0 0 1 42 22" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" />
+              <circle cx="22" cy="22" r="18" fill="none" stroke="var(--vinyl-groove)" stroke-width="1" />
+              <circle cx="22" cy="22" r="13" fill="none" stroke="var(--vinyl-groove)" stroke-width="1" />
+              <circle cx="22" cy="22" r="8" fill="none" stroke="var(--vinyl-groove)" stroke-width="1" />
+              <path d="M22 2 A20 20 0 0 1 42 22" fill="none" stroke="var(--vinyl-sheen)" stroke-width="2" />
               <circle cx="22" cy="22" r="4" fill="var(--color-app)" />
               <circle cx="22" cy="22" r="1.2" fill="var(--color-muted)" />
             </svg>
@@ -1586,7 +1587,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 <p className="text-[11px] leading-snug text-muted-2 break-words">{currentTrack.album}</p>
               )}
               {resumeHint !== null && (
-                <p className="text-[11px] text-muted-2" aria-live="polite">
+                <p className="text-xs text-muted-2" aria-live="polite">
                   {t('继续播放 {time}', { time: formatTime(resumeHint) })}
                 </p>
               )}
@@ -1614,7 +1615,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   className="absolute inset-0 rounded-full pointer-events-none"
                   style={{
                     backgroundImage:
-                      'repeating-radial-gradient(circle at center, rgba(255,255,255,0.10) 0 1px, transparent 1px 5px)',
+                      'repeating-radial-gradient(circle at center, var(--vinyl-groove) 0 1px, transparent 1px 5px)',
                   }}
                 />
                 {/* 没有封面时的中心标签占位（与列表行的 coverGradient 风格一致） */}
@@ -1642,13 +1643,13 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   className="absolute inset-0 rounded-full pointer-events-none transition-opacity duration-500"
                   style={{
                     backgroundImage:
-                      'repeating-radial-gradient(circle at center, rgba(0,0,0,0.55) 0 1px, transparent 1px 5px)',
+                      'repeating-radial-gradient(circle at center, var(--cover-scrim) 0 1px, transparent 1px 5px)',
                     opacity: coverLoaded ? 0.32 : 0,
                   }}
                 />
                 <span
                   className="absolute inset-0 rounded-full pointer-events-none transition-opacity duration-500"
-                  style={{ boxShadow: 'inset 0 0 26px rgba(0,0,0,0.6)', opacity: coverLoaded ? 1 : 0 }}
+                  style={{ boxShadow: 'inset 0 0 26px var(--cover-ring)', opacity: coverLoaded ? 1 : 0 }}
                 />
                 {/* Spindle center hole */}
                 <span className="absolute w-6 h-6 rounded-full bg-app border-2 border-line-strong/70" />
@@ -1697,10 +1698,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                           data-lyric-idx={i}
                           // 字号来自歌词设置(动态值用 inline style, 其余全部是 utility 类)
                           style={{ fontSize: d === 0 ? lyricFont + 3 : lyricFont }}
-                          className={`font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.5] tracking-[0.01em] ${isVideo ? 'text-lyric-ink/34 [text-shadow:0_1px_6px_rgba(0,0,0,0.55)]' : 'text-ink/34 [text-shadow:var(--lyric-shadow),0_0_12px_var(--color-app),0_0_28px_var(--color-app)]'} transition-[color,opacity] duration-300 ${
+                          className={`font-[Noto_Serif_CJK_SC,Noto_Serif,Georgia,serif] leading-[1.5] tracking-[0.01em] ${isVideo ? 'text-lyric-ink/34 [text-shadow:var(--video-lyric-shadow)]' : 'text-ink/34 [text-shadow:var(--lyric-shadow),0_0_12px_var(--color-app),0_0_28px_var(--color-app)]'} transition-[color,opacity] duration-300 ${
                             d === 0
                               ? isVideo
-                                ? 'text-lyric-ink font-semibold pl-2.5 border-l-2 border-accent/55 [text-shadow:0_1px_8px_rgba(0,0,0,0.6),0_0_22px_var(--lyric-glow)]'
+                                ? 'text-lyric-ink font-semibold pl-2.5 border-l-2 border-accent/55 [text-shadow:var(--video-lyric-shadow-strong)]'
                                 : 'text-ink font-semibold pl-2.5 border-l-2 border-accent/55 [text-shadow:var(--lyric-shadow),0_0_12px_var(--color-app),0_0_28px_var(--color-app),0_0_22px_var(--lyric-glow)]'
                               : d < 0
                               ? 'opacity-50'
@@ -1709,7 +1710,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                         >
                           {line.text}
                           {trans && (
-                            <span className="mt-0.5 block text-[11px] leading-snug italic text-muted-2">
+                            <span className="mt-0.5 block text-xs leading-snug italic text-muted-2">
                               {trans}
                             </span>
                           )}
@@ -1804,10 +1805,10 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
             </div>
           )}
           {isVideo && effectiveLyricWidth < lyricWidth && (
-            <p className="text-[10px] text-muted-2">{t('舞台宽度有限，歌词列自动收窄到 {width}px', { width: effectiveLyricWidth })}</p>
+            <p className="text-xs text-muted-2">{t('舞台宽度有限，歌词列自动收窄到 {width}px', { width: effectiveLyricWidth })}</p>
           )}
           {!showLyrics && (
-            <p className="text-[10px] text-muted-2">{t('歌词当前关闭 — 打开后设置生效')}</p>
+            <p className="text-xs text-muted-2">{t('歌词当前关闭 — 打开后设置生效')}</p>
           )}
         </div>
       )}
@@ -2007,7 +2008,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                   +5%
                 </button>
               </div>
-              <p className="text-[10px] text-muted-2">{t('拖动推杆或点预设，↑/↓ 微调，Esc 关闭')}</p>
+              <p className="text-xs text-muted-2">{t('拖动推杆或点预设，↑/↓ 微调，Esc 关闭')}</p>
             </div>
           </div>
         </div>
@@ -2016,7 +2017,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
       {/* 均衡器 (Equalizer) 面板 — 10段 Web Audio 均衡器，预设 + 手动调节 */}
       {/* 均衡器面板贴在控制胶囊上方(胶囊高约 84px + bottom-3), 避免重叠 */}
       {showEqPanel && (
-        <div ref={eqFlyoutRef} className={`absolute z-40 overflow-y-auto rounded-xl bg-app/95 border border-line p-3 flex flex-col gap-2 shadow-2xl ${isCompact ? 'left-2 right-2 bottom-[140px] max-h-[calc(100%-152px)]' : 'left-4 bottom-[104px] w-72 max-h-[calc(100%-112px)]'}`}>
+        <div ref={eqFlyoutRef} className={`absolute z-40 overflow-y-auto rounded-xl bg-app/95 border border-line p-3 flex flex-col gap-2 shadow-2xl ${SCROLLBAR_CLASSES} ${isCompact ? 'left-2 right-2 bottom-[140px] max-h-[calc(100%-152px)]' : 'left-4 bottom-[104px] w-72 max-h-[calc(100%-112px)]'}`}>
           {/* 面板 header: 标题 + 状态 + 手动/平 reset + 均衡器 on/off */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-ink-2 flex items-center gap-1">
@@ -2263,7 +2264,7 @@ export const VideoJsPlayer: React.FC<VideoJsPlayerProps> = ({
                 <div className="relative">
                   <Repeat className="w-4 h-4" />
                   {playMode === 'loop-one' && (
-                    <span className="absolute -top-1.5 -right-2 text-[9px] font-bold text-accent">1</span>
+                    <span className="absolute -top-1.5 -right-2 text-[11px] font-bold text-accent">1</span>
                   )}
                 </div>
               )}

@@ -82,7 +82,7 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
               <h3 className="font-semibold text-ink text-sm sm:text-base">
                 {t('播放历史记录')}
               </h3>
-              <p className="text-[11px] text-muted">
+              <p className="text-xs text-muted">
                 {t('已保存在本地 localStorage 中，共 {n} 条播放记录', { n: history.length })}
               </p>
             </div>
@@ -209,7 +209,7 @@ export const PlayHistoryModal: React.FC<PlayHistoryModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 border-t border-line bg-surface/90 flex items-center justify-between text-[11px] text-muted">
+        <div className="px-6 py-3 border-t border-line bg-surface/90 flex items-center justify-between text-xs text-muted">
           <span>{t('点击任意曲目即可直接再次播放')}</span>
           <button
             onClick={onClose}

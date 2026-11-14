@@ -710,7 +710,7 @@ export default function App() {
             >
               <Heart className={`w-4 h-4 ${favorites.length > 0 ? 'text-accent fill-accent' : 'text-muted'}`} />
               {favorites.length > 0 && (
-                <span className="absolute -top-1 -right-1 px-1.5 min-w-4 text-[10px] font-mono font-bold bg-accent text-white rounded-full text-center">
+                <span className="absolute -top-1 -right-1 px-1.5 min-w-4 text-[11px] font-mono font-bold bg-accent text-white rounded-full text-center">
                   {favorites.length}
                 </span>
               )}
@@ -723,7 +723,7 @@ export default function App() {
             >
               <History className="w-4 h-4 text-accent" />
               {history.length > 0 && (
-                <span className="absolute -top-1 -right-1 px-1.5 min-w-4 text-[10px] font-mono font-bold bg-surface-2 text-accent-soft border border-line-strong rounded-full text-center">
+                <span className="absolute -top-1 -right-1 px-1.5 min-w-4 text-[11px] font-mono font-bold bg-surface-2 text-accent-soft border border-line-strong rounded-full text-center">
                   {history.length}
                 </span>
               )}
@@ -782,7 +782,7 @@ export default function App() {
                   >
                     <History className="w-4 h-4 text-accent" />
                     <span>{t('播放历史')}</span>
-                    {history.length > 0 && <span className="font-mono text-[10px] text-muted-2">{history.length}</span>}
+                    {history.length > 0 && <span className="font-mono text-[11px] text-muted-2">{history.length}</span>}
                   </button>
                   <button
                     onClick={() => { setMoreMenuOpen(false); setShowShortcutsModal(true); }}

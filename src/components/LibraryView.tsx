@@ -253,7 +253,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       return (
         <span
           title={t('已转码为 {container} sidecar', { container: info.container || 'webm' }) + (sidecar ? ` (${sidecar})` : '')}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-dim/25 text-emerald border border-emerald-dim/40"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-emerald-dim/25 text-emerald border border-emerald-dim/40"
         >
           <CheckCircle2 className="w-3 h-3" />
           <span>{(info.container || 'webm').toUpperCase()}</span>
@@ -264,7 +264,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       return (
         <span
           title={t('正在 remux/转码，完成后自动可播')}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-dim/25 text-amber border border-amber-dim/40"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-dim/25 text-amber border border-amber-dim/40"
         >
           <Loader2 className="w-3 h-3 animate-spin" />
           <span>{info.progress > 0 ? t('转码 {progress}%', { progress: info.progress }) : t('转码中')}</span>
@@ -275,7 +275,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       return (
         <span
           title={t('排队等待转码（后台队列按文件从小到大处理）')}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-2 text-muted border border-line-strong/50"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-surface-2 text-muted border border-line-strong/50"
         >
           <Clock className="w-3 h-3" />
           <span>{t('排队')}</span>
@@ -286,7 +286,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       return (
         <span
           title={t('转码失败')}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent-dim/25 text-accent-soft border border-accent-dim/40"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-accent-dim/25 text-accent-soft border border-accent-dim/40"
         >
           <AlertTriangle className="w-3 h-3" />
           <span>{t('转码失败')}</span>
@@ -296,7 +296,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     return (
       <span
         title={t('未入转码队列（PRETRANCODE_MKV=0 或新扫描的文件）')}
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-2/60 text-muted-2 border border-dashed border-line-strong/60"
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-surface-2/60 text-muted-2 border border-dashed border-line-strong/60"
       >
         <Clock className="w-3 h-3" />
         <span>{t('待转码')}</span>
@@ -689,7 +689,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   </button>
                 </div>
                 {(coverPrefetchInfo || lyricPrefetchInfo) && (
-                  <p className="mt-2 text-[11px] text-muted-2 leading-relaxed">
+                  <p className="mt-2 text-xs text-muted-2 leading-relaxed">
                     {coverPrefetchInfo && <span>{coverPrefetchInfo}</span>}
                     {coverPrefetchInfo && lyricPrefetchInfo && <span className="mx-1.5">·</span>}
                     {lyricPrefetchInfo && <span>{lyricPrefetchInfo}</span>}
@@ -861,7 +861,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               {track.title}
                             </div>
                             {isFavorited && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0">
                                 <Heart className="w-2.5 h-2.5 fill-accent text-accent" />
                                 <span>{t('已收藏')}</span>
                               </span>
@@ -914,7 +914,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       {/* Type badge */}
                       <div className="hidden sm:flex sm:col-span-1 items-center justify-center">
                         <span
-                          className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded ${
+                          className={`text-[11px] font-mono font-medium px-2 py-0.5 rounded ${
                             isVideo
                               ? 'bg-accent-dim/30 text-accent-soft border border-accent-dim/40'
                               : 'bg-surface-2 text-muted border border-line-strong/50'
@@ -1113,7 +1113,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   <p className="text-[11px] text-muted truncate mt-0.5">
                     {t(album.artist_name)}
                   </p>
-                  <p className="text-[10px] text-muted-2 mt-1 font-mono">
+                  <p className="text-[11px] text-muted-2 mt-1 font-mono">
                     {t('{n} 首曲目', { n: album.track_count })}
                   </p>
                 </div>
@@ -1225,7 +1225,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             <div className="truncate font-medium text-ink">
                               {track.title}
                             </div>
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0">
                               <Heart className="w-2.5 h-2.5 fill-accent text-accent" />
                               <span>{t('已收藏')}</span>
                             </span>
@@ -1262,7 +1262,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       {/* Type badge */}
                       <div className="hidden sm:flex sm:col-span-1 items-center justify-center">
                         <span
-                          className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded ${
+                          className={`text-[11px] font-mono font-medium px-2 py-0.5 rounded ${
                             isVideo
                               ? 'bg-accent-dim/30 text-accent-soft border border-accent-dim/40'
                               : 'bg-surface-2 text-muted border border-line-strong/50'
